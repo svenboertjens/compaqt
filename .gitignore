@@ -1,0 +1,8 @@
+.vscode
+local
+**.so
+.venv
+build
+**.o
+**.egg-info
+dist

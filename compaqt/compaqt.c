@@ -2,20 +2,16 @@
 
 #include <Python.h>
 
-#define IS_LITTLE_ENDIAN 1
-#define STRICT_ALIGNMENT 0
+// These macros will be overwritten by the setup.py when needed
+#define IS_LITTLE_ENDIAN 1 // Endianness to follow
+#define STRICT_ALIGNMENT 0 // Whether to use strict alignment
 
-/* SETTINGS */
-
-// Whether to care about endianness
-static int transform_endianness = 1;
+/* GLOBALS */
 
 // Average size of items
 size_t avg_item_size = 32;
 // Average size of re-allocations
 size_t avg_realloc_size = 512;
-
-/* GLOBAL VARIABLES */
 
 // Allocation data
 static size_t reallocs;
@@ -30,7 +26,16 @@ static size_t offset;
 // The maximum bytes VLE metadata will take up
 #define MAX_VLE_METADATA_SIZE 9
 
+// Write Variable Length Encoding (VLE) metadata
 #define WR_METADATA_VLE(dt_mask, length) do { \
+    /* 
+      Decide what mode to use by checking whether the length fits within 4 and 11 bits.
+
+      0: length fits in 1 byte.
+      1: length fits in 2 bytes.
+      2: length is longer, write to a variable number of bytes.
+
+    */ \
     const int mode = !!(length >> 4) + !!(length >> 11); \
     switch (mode) \
     { \
@@ -63,6 +68,7 @@ static size_t offset;
     } \
 } while (0)
 
+// Read VLE metadata
 #define RD_METADATA_VLE(length) do { \
     const int mode = *(msg + offset) & 0b00011000; \
     \
@@ -96,7 +102,9 @@ static size_t offset;
     } \
 } while (0)
 
+// Read a datamask (stored in first 3 bits)
 #define RD_DTMASK() (*(msg + offset) & 0b00000111)
+// Read a group datamask (takes up entire byte)
 #define RD_DTMASK_GROUP() (*(msg + offset++))
 
 /*
@@ -132,13 +140,16 @@ static size_t offset;
 
 */
 
+/* ENDIANNESS TRANSFORMATIONS */
+
 #if (IS_LITTLE_ENDIAN == 1)
 
-    #define LL_LITTLE_ENDIAN(value) (value)
-    #define DB_LITTLE_ENDIAN(value) (value)
+    #define LL_LITTLE_ENDIAN(value) (value) // Long to little-endian
+    #define DB_LITTLE_ENDIAN(value) (value) // Double to little-endian
 
 #else
 
+     // Long to little-endian
     static inline long long LL_LITTLE_ENDIAN(long long value)
     {
         if (transform_endianness == 0)
@@ -168,6 +179,7 @@ static size_t offset;
         return result;
     }
 
+    // Double to little-endian
     static inline double DB_LITTLE_ENDIAN(double value)
     {
         if (transform_endianness == 0)
@@ -199,7 +211,8 @@ static size_t offset;
 #define DT_STRNG (unsigned char)(3) // Strings
 #define DT_INTGR (unsigned char)(4) // Integers
 
-#define DT_GROUP (unsigned char)(5) // Mask for datatypes that don't require length metadata
+// Group datatypes stores datatypes not requiring length metadata (thus can take up whole byte)
+#define DT_GROUP (unsigned char)(5) // Group datatype mask for identifying them
 #define DT_BOOLF DT_GROUP | (unsigned char)(0 << 3) // False Booleans
 #define DT_BOOLT DT_GROUP | (unsigned char)(1 << 3) // True Booleans
 #define DT_FLOAT DT_GROUP | (unsigned char)(3 << 3) // Floats
@@ -252,7 +265,7 @@ static inline size_t integer_ln(PyObject *value)
 static inline void integer_wr(PyObject *value, const size_t length)
 {
     if (length > sizeof(long long))
-        _PyLong_AsByteArray((PyLongObject *)value, (unsigned char *)(msg + offset), length, IS_LITTLE_ENDIAN == 1 ? 1 : transform_endianness, 1);
+        _PyLong_AsByteArray((PyLongObject *)value, (unsigned char *)(msg + offset), length, IS_LITTLE_ENDIAN, 1);
     else
     {
         #if (STRICT_ALIGNMENT == 0)
@@ -271,7 +284,7 @@ static inline void integer_wr(PyObject *value, const size_t length)
 }
 static inline PyObject *integer_rd(const size_t length)
 {
-    PyObject *result = _PyLong_FromByteArray((const unsigned char *)(msg + offset), length, IS_LITTLE_ENDIAN == 1 ? 1 : transform_endianness, 1);
+    PyObject *result = _PyLong_FromByteArray((const unsigned char *)(msg + offset), length, IS_LITTLE_ENDIAN, 1);
     offset += length;
     return result;
 }
@@ -367,10 +380,6 @@ static inline PyObject *integer_rd(const size_t length)
         return 1; \
     } \
 } while (0)
-
-// Pre-define container encode functions for nested cases
-static inline int encode_iterable_generic(PyObject *list, const size_t num_items);
-static inline int encode_dict_generic(PyObject *dict, const size_t num_items);
 
 // Encode an item from a container type
 static inline int encode_container_item(PyObject *item)
@@ -488,35 +497,8 @@ static inline int encode_container_item(PyObject *item)
     return 0;
 }
 
-// Encode an iterable type
-static inline int encode_iterable_generic(PyObject *list, const size_t num_items)
-{
-    WR_METADATA_VLE(DT_ARRAY, num_items);
-
-    for (size_t i = 0; i < num_items; i++)
-        if (encode_container_item(PyList_GET_ITEM(list, i)) == 1) return 1;
-
-    return 0;
-}
-
-// Encode a dict type
-static inline int encode_dict_generic(PyObject *dict, const size_t num_items)
-{
-    WR_METADATA_VLE(DT_DICTN, num_items);
-
-    Py_ssize_t pos = 0;
-    PyObject *key, *value;
-    while (PyDict_Next(dict, &pos, &key, &value))
-    {
-        if (encode_container_item(key) == 1) return 1;
-        if (encode_container_item(value) == 1) return 1;
-    }
-
-    return 0;
-}
-
-// Set up encoding basis for an iterable type
-static inline PyObject *encode_iterable_init(PyObject *value, const int strict)
+// Encode a list type
+static inline PyObject *encode_list(PyObject *value, const int strict)
 {
     if (!PyList_Check(value))
     {
@@ -584,7 +566,7 @@ static inline PyObject *encode_iterable_init(PyObject *value, const int strict)
 }
 
 // Set up encoding basis for a dict type
-static inline PyObject *encode_dict_init(PyObject *value, const int strict)
+static inline PyObject *encode_dict(PyObject *value, const int strict)
 {
     if (!PyDict_Check(value))
     {
@@ -758,17 +740,21 @@ static PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
         return PyBytes_FromStringAndSize(&buf, 1);
     }
     case 'l': // List
-        return encode_iterable_init(value, strict);
+        return encode_list(value, strict);
     case 'd': // Dict
-        return encode_dict_init(value, strict);
+        return encode_dict(value, strict);
     }
 
     PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name);
     return NULL;
 }
 
+/* DECODING */
+
+// Set an error stating we received an invalid input
 #define SET_INVALID_ERR() (PyErr_SetString(PyExc_ValueError, "Received an invalid or corrupted bytes string"))
 
+// Check whether we aren't overreading the buffer (means invalid input)
 #define OVERREAD_CHECK(length) do { \
     if (offset + length > allocated) \
     { \
@@ -777,6 +763,7 @@ static PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     } \
 } while (0)
 
+// Decode a single item
 #define DECODE_ITEM(rd_func) do { \
     size_t length = 0; \
     RD_METADATA_VLE(length); \
@@ -784,7 +771,8 @@ static PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     return rd_func(length); \
 } while (0)
 
-static PyObject *decode_item()
+// Decode an item inside a container
+static PyObject *decode_container_item()
 {
     const char dt_mask = RD_DTMASK();
 
@@ -819,9 +807,10 @@ static PyObject *decode_item()
             return NULL;
         }
 
+        // Decode all items and append to the list
         for (size_t i = 0; i < num_items; ++i)
         {
-            PyObject *item = decode_item();
+            PyObject *item = decode_container_item();
 
             if (item == NULL)
             {
@@ -847,11 +836,12 @@ static PyObject *decode_item()
             return NULL;
         }
 
+        // Go over the dict and decode all items, place them into the dict
         for (size_t i = 0; i < num_items; ++i)
         {
             PyObject *key, *val;
 
-            if ((key = decode_item()) == NULL || (val = decode_item()) == NULL)
+            if ((key = decode_container_item()) == NULL || (val = decode_container_item()) == NULL)
             {
                 Py_DECREF(dict);
                 return NULL;
@@ -864,6 +854,7 @@ static PyObject *decode_item()
     }
     }
 
+    // Invalid input received
     SET_INVALID_ERR();
     return NULL;
 }
@@ -887,6 +878,7 @@ static PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 
     const char dt_mask = RD_DTMASK();
 
+    // Don't use the decode_container_item as single items require different care
     switch (dt_mask)
     {
     case DT_BYTES: ++offset; return bytes_rd(allocated - 1);
@@ -963,9 +955,16 @@ static PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
     }
     }
 
+    // Invalid input
     SET_INVALID_ERR();
     return NULL;
 }
+
+/* SETTING METHODS */
+
+// No setting methods exist currently
+
+/* MODULE DEFINITIONS */
 
 static PyMethodDef CompaqtMethods[] = {
     {"encode", (PyCFunction)encode, METH_VARARGS | METH_KEYWORDS, "Encode a value to bytes"},

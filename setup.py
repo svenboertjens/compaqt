@@ -3,15 +3,15 @@ from setuptools.command.build_ext import build_ext
 
 import platform
 import sys
+import os
 
 macros = []
 
-if sys.byteorder != "little":
-    macros.append(("LITTLE_ENDIANNESS", 0))
+if sys.byteorder != "little" and not os.environ.get("IGNORE_ENDIANNESS"):
+    macros.append(("IS_LITTLE_ENDIAN", 0))
 
-if platform.system() == "Linux":
-    if platform.machine().startswith("arm"):
-        macros.append(("STRICT_ALIGNMENT", 1))
+if os.environ.get("FORCE_STRICT_ALIGNMENT") or platform.system().lower() == "linux" and platform.machine().lower().startswith("arm"):
+    macros.append(("STRICT_ALIGNMENT", 1))
 
 class CustomBuildExt(build_ext):
     def build_extensions(self):

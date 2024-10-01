@@ -465,7 +465,7 @@ static inline int encode_container_item(PyObject *item)
         const size_t num_items = (size_t)(PyList_GET_SIZE(item));
         WR_METADATA_VLE(DT_ARRAY, num_items);
 
-        for (size_t i = 0; i < num_items; i++)
+        for (size_t i = 0; i < num_items; ++i)
             if (encode_container_item(PyList_GET_ITEM(item, i)) == 1) return 1;
         
         break;
@@ -476,11 +476,11 @@ static inline int encode_container_item(PyObject *item)
         WR_METADATA_VLE(DT_DICTN, PyDict_GET_SIZE(item));
 
         Py_ssize_t pos = 0;
-        PyObject *key, *value;
-        while (PyDict_Next(item, &pos, &key, &value))
+        PyObject *key, *val;
+        while (PyDict_Next(item, &pos, &key, &val))
         {
             if (encode_container_item(key) == 1) return 1;
-            if (encode_container_item(value) == 1) return 1;
+            if (encode_container_item(val) == 1) return 1;
         }
         break;
     }
@@ -526,11 +526,15 @@ static inline PyObject *encode_list(PyObject *value, const int strict)
     reallocs = 0;
     offset = 0;
 
-    if (encode_iterable_generic(value, num_items) == 1)
+    WR_METADATA_VLE(DT_ARRAY, num_items);
+
+    for (size_t i = 0; i < num_items; ++i)
     {
-        // Error already set
-        free(msg);
-        return NULL;
+        if (encode_container_item(PyList_GET_ITEM(value, i)) == 1)
+        {
+            free(msg);
+            return NULL;
+        }
     }
     
     if (reallocs != 0)
@@ -594,11 +598,17 @@ static inline PyObject *encode_dict(PyObject *value, const int strict)
     reallocs = 0;
     offset = 0;
 
-    if (encode_dict_generic(value, num_items) != 0)
+    WR_METADATA_VLE(DT_DICTN, num_items);
+
+    Py_ssize_t pos = 0;
+    PyObject *key, *val;
+    while (PyDict_Next(value, &pos, &key, &val))
     {
-        // Error already set
-        free(msg);
-        return NULL;
+        if (encode_container_item(key) == 1 || encode_container_item(val) == 1)
+        {
+            free(msg);
+            return NULL;
+        }
     }
     
     if (reallocs != 0)
@@ -910,11 +920,10 @@ static PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
         }
 
+        PyObject *item;
         for (size_t i = 0; i < num_items; ++i)
         {
-            PyObject *item = decode_item();
-
-            if (item == NULL)
+            if ((item = decode_container_item()) == NULL)
             {
                 Py_DECREF(list);
                 return NULL;
@@ -942,7 +951,7 @@ static PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
         {
             PyObject *key, *val;
 
-            if ((key = decode_item()) == NULL || (val = decode_item()) == NULL)
+            if ((key = decode_container_item()) == NULL || (val = decode_container_item()) == NULL)
             {
                 Py_DECREF(dict);
                 return NULL;

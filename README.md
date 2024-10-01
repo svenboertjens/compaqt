@@ -56,7 +56,7 @@ value = compaqt.decode(encoded)
 # Now, `value` contains the original value
 ```
 
-Compaqt is still in development and will receive more methods and optional arguments in the future.
+For further usage or other documentation, see the [docs](https://github.com/svenboertjens/compaqt/tree/main/docs).
 
 
 ## License

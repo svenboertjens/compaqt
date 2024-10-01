@@ -24,7 +24,7 @@ class CustomBuildExt(build_ext):
 
 ext_modules = [
     Extension(
-        'compaqt',
+        'compaqt.compaqt',
         sources=[
             'compaqt/compaqt.c'
         ],
@@ -37,7 +37,7 @@ ext_modules = [
 
 setup(
     name="compaqt",
-    version="0.0.2",
+    version="0.1.1",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",

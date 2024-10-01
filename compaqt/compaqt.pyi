@@ -4,8 +4,7 @@ def encode(value: any) -> bytes:
     """Encode a value to bytes.
     
     Usage:
-    >>> to_encode = ...
-    >>> encoded = compaqt.encode(to_encode)
+    >>> encoded = compaqt.encode(any_value)
     
     Supported datatypes (excl. custom extensions):
     - bytes
@@ -24,7 +23,6 @@ def decode(encoded: bytes) -> any:
     """Decode an encoded bytes object back to the original value.
     
     Usage:
-    >>> encoded = cq.encode(...)
     >>> original_value = cq.decode(encoded)
     """
     ...

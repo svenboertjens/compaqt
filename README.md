@@ -26,8 +26,6 @@ The serializer currently supports the following datatypes:
 - list
 - dict
 
-This is besides custom datatype extensions (not yet supported, in development).
-
 
 ## Usage
 

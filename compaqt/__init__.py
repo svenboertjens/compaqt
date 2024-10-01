@@ -1,8 +1,7 @@
-__version__ = "0.1.1"
 __author__ = "Sven Boertjens"
 __license__ = "BSD-3-Clause"
 __url__ = "https://github.com/svenboertjens/compaqt"
-__doc__ = open("docs/USAGE.md").read()
+__doc__ = "For usage details, see: https://github.com/svenboertjens/compaqt/blob/main/docs/USAGE.md"
 
 try:
     from .compaqt import encode, decode

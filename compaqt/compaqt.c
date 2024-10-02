@@ -9,9 +9,12 @@
 /* GLOBALS */
 
 // Average size of items
-size_t avg_item_size = 32;
+static size_t avg_item_size = 32;
 // Average size of re-allocations
-size_t avg_realloc_size = 512;
+static size_t avg_realloc_size = 512;
+
+// Whether to dymically adjust allocation settings
+static char dynamic_allocation_tweaks = 1;
 
 // Allocation data
 static size_t reallocs;
@@ -537,30 +540,33 @@ static inline PyObject *encode_list(PyObject *value, const int strict)
         }
     }
     
-    if (reallocs != 0)
+    if (dynamic_allocation_tweaks == 1)
     {
-        const size_t difference = offset - initial_allocated;
-        const size_t med_diff = difference / num_items;
+        if (reallocs != 0)
+        {
+            const size_t difference = offset - initial_allocated;
+            const size_t med_diff = difference / num_items;
 
-        avg_realloc_size += difference >> 1;
-        avg_item_size += med_diff >> 1;
-    }
-    else
-    {
-        const size_t difference = initial_allocated - offset;
-        const size_t med_diff = difference / num_items;
-        const size_t diff_small = difference >> 4;
-        const size_t med_small = med_diff >> 5;
-
-        if (diff_small + 64 < avg_realloc_size)
-            avg_realloc_size -= diff_small;
+            avg_realloc_size += difference >> 1;
+            avg_item_size += med_diff >> 1;
+        }
         else
-            avg_realloc_size = 64;
+        {
+            const size_t difference = initial_allocated - offset;
+            const size_t med_diff = difference / num_items;
+            const size_t diff_small = difference >> 4;
+            const size_t med_small = med_diff >> 5;
 
-        if (med_small + 4 < avg_item_size)
-            avg_item_size -= med_small;
-        else
-            avg_item_size = 4;
+            if (diff_small + 64 < avg_realloc_size)
+                avg_realloc_size -= diff_small;
+            else
+                avg_realloc_size = 64;
+
+            if (med_small + 4 < avg_item_size)
+                avg_item_size -= med_small;
+            else
+                avg_item_size = 4;
+        }
     }
 
     PyObject *result = PyBytes_FromStringAndSize(msg, offset);
@@ -611,30 +617,33 @@ static inline PyObject *encode_dict(PyObject *value, const int strict)
         }
     }
     
-    if (reallocs != 0)
+    if (dynamic_allocation_tweaks == 1)
     {
-        const size_t difference = offset - initial_allocated;
-        const size_t med_diff = difference / (num_items * 2);
+        if (reallocs != 0)
+        {
+            const size_t difference = offset - initial_allocated;
+            const size_t med_diff = difference / (num_items * 2);
 
-        avg_realloc_size += difference >> 1;
-        avg_item_size += med_diff >> 1;
-    }
-    else
-    {
-        const size_t difference = initial_allocated - offset;
-        const size_t med_diff = difference / (num_items * 2);
-        const size_t diff_small = difference >> 4;
-        const size_t med_small = med_diff >> 5;
-
-        if (diff_small + 64 < avg_realloc_size)
-            avg_realloc_size -= diff_small;
+            avg_realloc_size += difference >> 1;
+            avg_item_size += med_diff >> 1;
+        }
         else
-            avg_realloc_size = 64;
+        {
+            const size_t difference = initial_allocated - offset;
+            const size_t med_diff = difference / (num_items * 2);
+            const size_t diff_small = difference >> 4;
+            const size_t med_small = med_diff >> 5;
 
-        if (med_small + 4 < avg_item_size)
-            avg_item_size -= med_small;
-        else
-            avg_item_size = 4;
+            if (diff_small + 64 < avg_realloc_size)
+                avg_realloc_size -= diff_small;
+            else
+                avg_realloc_size = 64;
+
+            if (med_small + 4 < avg_item_size)
+                avg_item_size -= med_small;
+            else
+                avg_item_size = 4;
+        }
     }
 
     PyObject *result = PyBytes_FromStringAndSize(msg, offset);
@@ -971,7 +980,57 @@ static PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 
 /* SETTING METHODS */
 
-// No setting methods exist currently
+// Function to set manual allocation settings
+static PyObject *manual_allocations(PyObject *self, PyObject *args)
+{
+    Py_ssize_t item_size;
+    Py_ssize_t realloc_size;
+
+    if (!PyArg_ParseTuple(args, "nn", &item_size, &realloc_size))
+    {
+        PyErr_SetString(PyExc_ValueError, "Expected two 'int' types");
+        return NULL;
+    }
+
+    if (item_size <= 0 || realloc_size <= 0)
+    {
+        PyErr_SetString(PyExc_ValueError, "Size values must be positive and larger than zero!");
+        return NULL;
+    }
+
+    dynamic_allocation_tweaks = 0;
+    avg_item_size = (size_t)item_size;
+    avg_realloc_size = (size_t)realloc_size;
+
+    Py_RETURN_NONE;
+}
+
+// Function to set dynamic allocation settings
+static PyObject *dynamic_allocations(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    Py_ssize_t item_size = 0;
+    Py_ssize_t realloc_size = 0;
+
+    static char *kwlist[] = {"item_size", "realloc_size", NULL};
+
+    // Don't check args issues as all are optional
+    PyArg_ParseTupleAndKeywords(args, kwargs, "|nn", kwlist, &item_size, &realloc_size);
+
+    if (item_size < 0 || realloc_size < 0)
+    {
+        PyErr_SetString(PyExc_ValueError, "Size values must be positive and larger than zero!");
+        return NULL;
+    }
+
+    dynamic_allocation_tweaks = 1;
+
+    if (item_size != 0)
+        avg_item_size = (size_t)item_size;
+    if (realloc_size != 0)
+        avg_realloc_size = (size_t)realloc_size;
+
+    Py_RETURN_NONE;
+}
 
 /* MODULE DEFINITIONS */
 
@@ -983,6 +1042,8 @@ static PyMethodDef CompaqtMethods[] = {
 
 // Submodule for settings
 static PyMethodDef SettingsMethods[] = {
+    {"manual_allocations", (PyCFunction)manual_allocations, METH_VARARGS, "Set manual allocation settings"},
+    {"dynamic_allocations", (PyCFunction)dynamic_allocations, METH_VARARGS | METH_KEYWORDS, "Enable dynamic allocation settings, and optionally set start values"},
     {NULL, NULL, 0, NULL}
 };
 

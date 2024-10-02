@@ -116,7 +116,11 @@ The main functions used to decode data:
 
 ## Setting methods
 
-There aren't any methods to control settings currently.
+These methods allow users to tweak the serializer during runtime.
+
+The setting methods:
+- `manual_allocations`:   Manually set allocation sizes, and don't change them during runtime internally.
+- `dynamic_allocations`:  Enable dynamic allocation tweaks during runtime, optionally set start values.
 
 
 ## Module definitions

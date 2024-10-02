@@ -5,15 +5,15 @@ Here, you can find explanations on how to use `compaqt`.
 
 ## Contents
 
-- [Supported datatypes](#Supported-datatypes)
-    - [Standard types](#Standard-types)
-    - [Custom types](#Custom-types)
-
-- [Basic serialization](#Basic-serialization)
-    - [Encode (basic)](#Encode-(basic))
-    - [Decode (basic)](#Decode-(basic))
-
-- [Advanced serialization](#Advanced-serialization)
+- [Supported datatypes](#supported-datatypes)
+    - [Standard types](#standard-types)
+    - [Custom types](#custom-types)
+- [Basic serialization](#basic-serialization)
+    - [Encode (basic)](#encode-(basic))
+    - [Decode (basic)](#decode-(basic))
+- [Advanced serialization](#advanced-serialization)
+- [Settings](#settings)
+    - [Allocations](#allocations)
 
 
 ## Supported datatypes
@@ -94,4 +94,49 @@ original_value = compaqt.decode(encoded)
 ## Advanced serialization
 
 This module does not support advanced methods yet.
+
+
+## Settings
+
+The settings allow us to control certain aspects of the serializer during runtime. These are available through the `compaqt.settings` namespace.
+
+
+### Allocations
+
+The allocation settings let us decide how much memory to allocate when encoding values.
+The two available modes are `manual` and `dynamic` (default), where `manual` lets us define static allocation sizes to always follow, and `dynamic` enables on-the-fly allocation size tweaks based on the input data.
+
+
+#### Manual allocations
+
+```python
+settings.manual_allocations(item_size: int, realloc_size: int) -> None
+```
+
+Args:
+- `item_size`:    Bytes to allocate per item found in lists/dicts.
+- `realloc_size`: Bytes to allocate extra when the current allocation is insufficient.
+
+Example:
+```python
+# If we only want to serialize values with a size of 6 bytes, we can do this:
+compaqt.settings.manual_allocations(6, 18) # The 18 is for re-allocations, if necessary
+```
+
+
+#### Dynamic allocations
+
+```python
+settings.dynamic_allocations(item_size: int, realloc_size: int) -> None
+```
+
+Args (optional):
+- `item_size`:    Bytes to allocate per item found in lists/dicts.
+- `realloc_size`: Bytes to allocate extra when the current allocation is insufficient.
+
+Example:
+```python
+# If we want to enable dynamic allocations, and start the item size at 8
+compaqt.settings.dynamic_allocations(item_size=8)
+```
 

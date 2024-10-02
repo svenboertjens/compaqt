@@ -12,7 +12,7 @@ Known bugs that are being worked on:
 ## Features
 
 The following features are being worked on:
-- Manual allocation control through settings
+- 'Strict' serialization option.
 
 
 ## Ideas
@@ -20,5 +20,4 @@ The following features are being worked on:
 The ideas that *could* become a feature later on:
 - Custom datatype support.
 - Optional arguments for serialization methods (for more control over the serialization process).
-- 'Strict' serialization methods (less flexible, but more compact and faster).
 

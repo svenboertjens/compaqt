@@ -2,6 +2,13 @@
 
 All changes to the `compaqt` module are documented here.
 
+
+## [0.2.0] - 2024-10-02
+
+### Updates:
+- Add allocation control settings;
+
+
 ## [0.1.2] - 2024-10-1
 
 ### Fixes:

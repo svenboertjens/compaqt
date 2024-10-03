@@ -1,10 +1,18 @@
+import compaqt
+
+encode = compaqt.encode
+decode = compaqt.decode
+validate = compaqt.validate
+
 class Test():
     def __init__(self):
         self.fails = 0
         self.failed = []
     
-    def test(self, value, encode, decode, encode_kwargs={}, decode_kwargs={}):
-        if decode(encode(value, **encode_kwargs), **decode_kwargs) != value:
+    def test(self, value):
+        encoded = encode(value)
+        
+        if decode(encoded) != value:
             strval = str(value)
             
             if len(strval) > 64:
@@ -12,6 +20,8 @@ class Test():
             
             self.failed.append(strval)
             self.fails += 1
+        elif not validate(encoded):
+            print("Incorrectly invalidated!")
     
     def finalize(self):
         if self.fails == 0:
@@ -26,7 +36,7 @@ class Test():
         self.fails = 0
         self.failed = []
     
-    def test_values(self, values, encode, decode, encode_kwargs={}, decode_kwargs={}):
+    def test_values(self, values):
         for value in values:
-            self.test(value, encode, decode, encode_kwargs, decode_kwargs)
+            self.test(value)
         self.finalize()

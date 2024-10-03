@@ -183,9 +183,9 @@ static size_t offset;
 #define DT_GROUP (unsigned char)(5) // Group datatype mask for identifying them
 #define DT_BOOLF DT_GROUP | (unsigned char)(0 << 3) // False Booleans
 #define DT_BOOLT DT_GROUP | (unsigned char)(1 << 3) // True Booleans
-#define DT_FLOAT DT_GROUP | (unsigned char)(3 << 3) // Floats
-#define DT_NONTP DT_GROUP | (unsigned char)(4 << 3) // NoneTypes
-#define DT_CMPLX DT_GROUP | (unsigned char)(6 << 3) // Complexes
+#define DT_FLOAT DT_GROUP | (unsigned char)(2 << 3) // Floats
+#define DT_NONTP DT_GROUP | (unsigned char)(3 << 3) // NoneTypes
+#define DT_CMPLX DT_GROUP | (unsigned char)(4 << 3) // Complexes
 
 #define DT_NOUSE (unsigned char)(6) // Not yet used for anything, suggestions?
 #define DT_EXTND (unsigned char)(7) // Custom datatypes
@@ -624,12 +624,11 @@ static inline PyObject *encode_dict(PyObject *value)
 // Main function for encoding objects
 static PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-    static char *kwlist[] = {"value", "strict", NULL};
+    static char *kwlist[] = {"value", NULL};
 
     PyObject *value;
-    int strict = 0;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|i", kwlist, &value, &strict))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|", kwlist, &value))
     {
         PyErr_SetString(PyExc_ValueError, "Expected 1 'any' input");
         return NULL;
@@ -701,9 +700,9 @@ static PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
         return PyBytes_FromStringAndSize(&buf, 1);
     }
     case 'l': // List
-        return strict == 0 ? encode_list(value) : encode_list_strict(value);
+        return encode_list(value);
     case 'd': // Dict
-        return strict == 0 ? encode_dict(value) : encode_dict(value);
+        return encode_dict(value);
     }
 
     PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name);
@@ -851,17 +850,19 @@ static PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 
         switch (act_mask)
         {
-        case DT_FLOAT: return float_rd();
-        case DT_CMPLX: return complex_rd();
+        case DT_FLOAT: OVERREAD_CHECK(8);  return float_rd();
+        case DT_CMPLX: OVERREAD_CHECK(16); return complex_rd();
         case DT_BOOLT: Py_RETURN_TRUE;
         case DT_BOOLF: Py_RETURN_FALSE;
         case DT_NONTP: Py_RETURN_NONE;
+        default: SET_INVALID_ERR(); return NULL;
         }
     }
     case DT_ARRAY:
     {
         size_t num_items = 0;
         RD_METADATA_VLE(num_items);
+        OVERREAD_CHECK(0); // Check whether the metadata read didn't cross the limit
 
         PyObject *list = PyList_New(num_items);
 
@@ -889,6 +890,7 @@ static PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
     {
         size_t num_items = 0;
         RD_METADATA_VLE(num_items);
+        OVERREAD_CHECK(0);
 
         PyObject *dict = PyDict_New();
 
@@ -918,6 +920,97 @@ static PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
     // Invalid input
     SET_INVALID_ERR();
     return NULL;
+}
+
+/* VALIDATION */
+
+#define VALIDATE_OVERREAD_CHECK(length) do { \
+    if (offset + length > allocated) return 1; \
+} while (0)
+
+static inline int _validate()
+{
+    VALIDATE_OVERREAD_CHECK(1);
+
+    switch (RD_DTMASK())
+    {
+    case DT_GROUP: // Group datatypes
+    {
+        switch (RD_DTMASK_GROUP())
+        {
+        // Static lengths, no metadata to read, already incremented by `RD_DTMASK_GROUP`
+        case DT_FLOAT: VALIDATE_OVERREAD_CHECK(8); offset += 8;  return 0;
+        case DT_CMPLX: VALIDATE_OVERREAD_CHECK(16); offset += 16; return 0;
+        case DT_BOOLF: // Boolean and NoneType values don't have more bytes, nothing to increment
+        case DT_BOOLT:
+        case DT_NONTP: return 0;
+        default: return 1;
+        }
+    }
+    case DT_ARRAY:
+    {
+        size_t num_items;
+        RD_METADATA_VLE(num_items);
+        VALIDATE_OVERREAD_CHECK(0); // Check whether the metadata reading didn't cross the boundary
+
+        for (size_t i = 0; i < num_items; ++i)
+            if (_validate() == 1) return 1;
+        
+        return 0;
+    }
+    case DT_DICTN:
+    {
+        size_t num_items;
+        RD_METADATA_VLE(num_items);
+        VALIDATE_OVERREAD_CHECK(0);
+
+        for (size_t i = 0; i < (num_items * 2); ++i)
+            if (_validate() == 1) return 1;
+        
+        return 0;
+    }
+    case DT_EXTND:
+    case DT_NOUSE: return 1; // Not supported yet, so currently means invalid
+    default:
+    {
+        // All other cases use VLE metadata, so read length and increment offset using it
+        size_t length;
+        RD_METADATA_VLE(length);
+        VALIDATE_OVERREAD_CHECK(length);
+        offset += length;
+        return 0;
+    }
+    }
+}
+
+static PyObject *validate(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *value;
+    int err_on_invalid = 0;
+
+    static char *kwlist[] = {"value", "error_on_invalid", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O!|i", kwlist, &PyBytes_Type, &value, &err_on_invalid))
+    {
+        PyErr_SetString(PyExc_ValueError, "Expected at least the 'value' (bytes) argument.");
+        return NULL;
+    }
+
+    PyBytes_AsStringAndSize(value, &msg, (Py_ssize_t *)&allocated);
+
+    offset = 0;
+
+    const int result = _validate();
+
+    if (result == 0)
+        Py_RETURN_TRUE;
+    else if (err_on_invalid == 0)
+        Py_RETURN_FALSE;
+    else
+    {
+        PyErr_SetString(PyExc_ValueError, "The received object does not appear to be valid");
+        return NULL;
+    }
 }
 
 /* SETTING METHODS */
@@ -979,6 +1072,7 @@ static PyObject *dynamic_allocations(PyObject *self, PyObject *args, PyObject *k
 static PyMethodDef CompaqtMethods[] = {
     {"encode", (PyCFunction)encode, METH_VARARGS | METH_KEYWORDS, "Encode a value to bytes"},
     {"decode", (PyCFunction)decode, METH_VARARGS | METH_KEYWORDS, "Decode a value from bytes"},
+    {"validate", (PyCFunction)validate, METH_VARARGS | METH_KEYWORDS, "Validate an encoded object"},
     {NULL, NULL, 0, NULL}
 };
 

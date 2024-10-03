@@ -37,6 +37,20 @@ def decode(encoded: bytes) -> any:
     """
     ...
 
+def validate(encoded: bytes, error_on_invalid: bool=False) -> bool:
+    """Validate whether an encoded bytes object is valid
+    
+    Args:
+    - `encoded`:           The encoded value to validate.
+    - `error_on_invalid`:  Whether to throw an error if the the value is invalid.
+    
+    Returns a boolean on whether the encoded object is valid.
+    
+    Usage:
+    >>> is_valid = compaqt.validate(encoded)
+    """
+    ...
+
 class settings:
     def manual_allocations(item_size: int, realloc_size: int) -> None:
         """Disable dynamic allocation tweaks and set your own allocation sizes.
@@ -50,7 +64,7 @@ class settings:
         """
         ...
     
-    def dynamic_allocations(item_size: int = ..., realloc_size: int = ...) -> None:
+    def dynamic_allocations(item_size: int=..., realloc_size: int=...) -> None:
         """Enable dynamic allocations and optionally set the allocation sizes to start off with.
         
         Args:

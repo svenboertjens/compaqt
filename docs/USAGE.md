@@ -12,6 +12,7 @@ Here, you can find explanations on how to use `compaqt`.
     - [Encode (basic)](#encode-(basic))
     - [Decode (basic)](#decode-(basic))
 - [Advanced serialization](#advanced-serialization)
+- [Validation](#validation)
 - [Settings](#settings)
     - [Allocations](#allocations)
 
@@ -39,7 +40,7 @@ The by default supported datatypes:
 
 ### Custom types
 
-Unfortunately, `compaqt` does not support custom datatypes yet. This is, however, in active development.
+Unfortunately, `compaqt` does not support custom datatypes yet. This feature is listed on the TODO and will likely be worked on in the near future.
 
 
 ## Basic serialization
@@ -93,7 +94,34 @@ original_value = compaqt.decode(encoded)
 
 ## Advanced serialization
 
-This module does not support advanced methods yet.
+This module does not support advanced serialization methods yet. This feature is listed on the TODO and will likely be worked on in the near future.
+
+
+## Validation
+
+To check whether a bytes object can be decoded correctly by Compaqt, we can use the `validate` function.
+
+```python
+validate(encoded: bytes, error_on_invalid: bool=False) -> bool
+```
+
+Args:
+- `encoded`:          The encoded bytes object to validate.
+- `error_on_invalid`: Whether to throw an error if the object is deemed invalid. Defaults to False.
+
+Returns `True` if the object is valid, otherwise returns `False`.
+
+Example:
+```python
+# The encoded object we want to validate
+encoded = ...
+
+# Check whether the encoded object is valid
+is_valid = compaqt.validate(encoded)
+
+# Or, throw an error if it fails:
+compaqt.validate(encoded, error_on_invalid=True)
+```
 
 
 ## Settings
@@ -127,12 +155,12 @@ compaqt.settings.manual_allocations(6, 18) # The 18 is for re-allocations, if ne
 #### Dynamic allocations
 
 ```python
-settings.dynamic_allocations(item_size: int, realloc_size: int) -> None
+settings.dynamic_allocations(item_size: int=..., realloc_size: int=...) -> None
 ```
 
-Args (optional):
-- `item_size`:    Bytes to allocate per item found in lists/dicts.
-- `realloc_size`: Bytes to allocate extra when the current allocation is insufficient.
+Args:
+- `item_size`:    Bytes to allocate per item found in lists/dicts. Defaults to the currently set value.
+- `realloc_size`: Bytes to allocate extra when the current allocation is insufficient. Defaults to the currently set value.
 
 Example:
 ```python

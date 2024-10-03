@@ -1,7 +1,7 @@
 import compaqt
 import timeit
 
-iterations = 1000_000
+iterations = 1000_0000
 
 def benchmark(value):
     encoded = compaqt.encode(value)
@@ -9,7 +9,7 @@ def benchmark(value):
     encode = timeit.timeit(lambda: compaqt.encode(value), number=iterations)
     decode = timeit.timeit(lambda: compaqt.decode(encoded), number=iterations)
     
-    print(f"Type '{type(value).__name__}': {value}\nEncode: {encode:.4f}\nDecode: {decode:.4f}\n")
+    print(f"\nType '{type(value).__name__}': {value}\nEncode: {encode:.6f} s\nDecode: {decode:.6f} s\nSize:   {len(encoded)} bytes")
 
 print(f"Iterations: {iterations}\n")
 

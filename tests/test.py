@@ -65,5 +65,5 @@ values = {
 
 for tp, vals in values.items():
     print(f"\nType '{tp}'")
-    test.test_values(vals, compaqt.encode, compaqt.decode)
+    test.test_values(vals)
 

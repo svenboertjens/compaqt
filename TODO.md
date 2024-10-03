@@ -12,7 +12,8 @@ Known bugs that are being worked on:
 ## Features
 
 The following features are being worked on:
-- Optional arguments for serialization methods (for more control over the serialization process).
+- New serialization methods/options (write to a file, chunk processing).
+- Serialized data validation (check whether encoded data is valid).
 
 
 ## Ideas

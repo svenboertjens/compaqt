@@ -3,6 +3,15 @@
 All changes to the `compaqt` module are documented here.
 
 
+## [0.3.0] - 2024-10-03
+
+### Fixes:
+- Add overread checks on float and complex types;
+
+### Updates:
+- Add encoded object validation method;
+
+
 ## [0.2.0] - 2024-10-02
 
 ### Updates:

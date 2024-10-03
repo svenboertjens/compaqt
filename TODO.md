@@ -13,7 +13,6 @@ Known bugs that are being worked on:
 
 The following features are being worked on:
 - New serialization methods/options (write to a file, chunk processing).
-- Serialized data validation (check whether encoded data is valid).
 
 
 ## Ideas

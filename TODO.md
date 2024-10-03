@@ -12,12 +12,11 @@ Known bugs that are being worked on:
 ## Features
 
 The following features are being worked on:
-- 'Strict' serialization option.
+- Optional arguments for serialization methods (for more control over the serialization process).
 
 
 ## Ideas
 
 The ideas that *could* become a feature later on:
 - Custom datatype support.
-- Optional arguments for serialization methods (for more control over the serialization process).
 

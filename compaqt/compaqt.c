@@ -26,19 +26,17 @@ static size_t offset;
 
 /* METADATA MACROS */
 
+/*
+  
+  FOR METADATA DOCUMENTATION, SEE "docs/metadata.md"
+
+*/
+
 // The maximum bytes VLE metadata will take up
 #define MAX_VLE_METADATA_SIZE 9
 
 // Write Variable Length Encoding (VLE) metadata
 #define WR_METADATA_VLE(dt_mask, length) do { \
-    /* 
-      Decide what mode to use by checking whether the length fits within 4 and 11 bits.
-
-      0: length fits in 1 byte.
-      1: length fits in 2 bytes.
-      2: length is longer, write to a variable number of bytes.
-
-    */ \
     const int mode = !!(length >> 4) + !!(length >> 11); \
     switch (mode) \
     { \
@@ -109,39 +107,6 @@ static size_t offset;
 #define RD_DTMASK() (*(msg + offset) & 0b00000111)
 // Read a group datamask (takes up entire byte)
 #define RD_DTMASK_GROUP() (*(msg + offset++))
-
-/*
-
- # Might be used later for static arrays
-
-#define WR_LENGTH(length) (*(msg + offset++) = (unsigned char)(length))
-#define RD_LENGTH() ((size_t)(*(msg + offset++) & 0xFF))
-
-#define WR_METADATA_STATIC(dt_mask_container, dt_mask, ln_repr, length) do { \
-    *(msg + offset++) = dt_mask_container | (dt_mask << 3) | (ln_repr << 6); \
-    switch (ln_repr) \
-    { \
-    case 3: *(msg + offset++) = (unsigned char)(length >> 24); \
-    case 2: *(msg + offset++) = (unsigned char)(length >> 16); \
-    case 1: *(msg + offset++) = (unsigned char)(length >> 8); \
-    case 0: *(msg + offset++) = (unsigned char)(length); \
-    } \
-} while (0)
-
-#define RD_METADATA_STATIC(dt_mask, length) do { \
-    dt_mask = *(msg + offset) & 0b00011100; \
-    const int ln_repr = *(msg + offset++) & 0b00000011; \
-    \
-    switch (ln_repr) \
-    { \
-    case 3: length |= *(msg + offset++) << 24; \
-    case 2: length |= *(msg + offset++) << 16; \
-    case 1: length |= *(msg + offset++) <<  8; \
-    case 0: length |= *(msg + offset++); \
-    } \
-} while (0)
-
-*/
 
 /* ENDIANNESS TRANSFORMATIONS */
 
@@ -351,6 +316,8 @@ static inline PyObject *integer_rd(const size_t length)
 
 #endif
 
+#define bool_wr(value) (*(msg + offset++) = DT_BOOLF | (!!(item == Py_True) << 3))
+
 /* ENCODING */
 
 // Reallocate the message buffer by a set amount
@@ -408,7 +375,7 @@ static inline int encode_container_item(PyObject *item)
         else // Boolean
         {
             OFFSET_CHECK(1);
-            *(msg + offset++) = DT_BOOLF | (!!(item == Py_True) << 3);
+            bool_wr(item);
         }
         break;
     }
@@ -489,19 +456,48 @@ static inline int encode_container_item(PyObject *item)
     }
     default: // Unsupported datatype
     {
-        if (type != &PyUnicode_Type)
-        {
-            PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name);
-            return 1;
-        }
+        PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name);
+        return 1;
     }
     }
 
     return 0;
 }
 
+static inline void update_allocation_settings(const size_t initial_allocated, const size_t num_items)
+{
+    if (dynamic_allocation_tweaks == 1)
+    {
+        if (reallocs != 0)
+        {
+            const size_t difference = offset - initial_allocated;
+            const size_t med_diff = difference / num_items;
+
+            avg_realloc_size += difference >> 1;
+            avg_item_size += med_diff >> 1;
+        }
+        else
+        {
+            const size_t difference = initial_allocated - offset;
+            const size_t med_diff = difference / num_items;
+            const size_t diff_small = difference >> 4;
+            const size_t med_small = med_diff >> 5;
+
+            if (diff_small + 64 < avg_realloc_size)
+                avg_realloc_size -= diff_small;
+            else
+                avg_realloc_size = 64;
+
+            if (med_small + 4 < avg_item_size)
+                avg_item_size -= med_small;
+            else
+                avg_item_size = 4;
+        }
+    }
+}
+
 // Encode a list type
-static inline PyObject *encode_list(PyObject *value, const int strict)
+static inline PyObject *encode_list(PyObject *value)
 {
     if (!PyList_Check(value))
     {
@@ -540,34 +536,7 @@ static inline PyObject *encode_list(PyObject *value, const int strict)
         }
     }
     
-    if (dynamic_allocation_tweaks == 1)
-    {
-        if (reallocs != 0)
-        {
-            const size_t difference = offset - initial_allocated;
-            const size_t med_diff = difference / num_items;
-
-            avg_realloc_size += difference >> 1;
-            avg_item_size += med_diff >> 1;
-        }
-        else
-        {
-            const size_t difference = initial_allocated - offset;
-            const size_t med_diff = difference / num_items;
-            const size_t diff_small = difference >> 4;
-            const size_t med_small = med_diff >> 5;
-
-            if (diff_small + 64 < avg_realloc_size)
-                avg_realloc_size -= diff_small;
-            else
-                avg_realloc_size = 64;
-
-            if (med_small + 4 < avg_item_size)
-                avg_item_size -= med_small;
-            else
-                avg_item_size = 4;
-        }
-    }
+    update_allocation_settings(initial_allocated, num_items);
 
     PyObject *result = PyBytes_FromStringAndSize(msg, offset);
 
@@ -576,7 +545,7 @@ static inline PyObject *encode_list(PyObject *value, const int strict)
 }
 
 // Set up encoding basis for a dict type
-static inline PyObject *encode_dict(PyObject *value, const int strict)
+static inline PyObject *encode_dict(PyObject *value)
 {
     if (!PyDict_Check(value))
     {
@@ -617,34 +586,7 @@ static inline PyObject *encode_dict(PyObject *value, const int strict)
         }
     }
     
-    if (dynamic_allocation_tweaks == 1)
-    {
-        if (reallocs != 0)
-        {
-            const size_t difference = offset - initial_allocated;
-            const size_t med_diff = difference / (num_items * 2);
-
-            avg_realloc_size += difference >> 1;
-            avg_item_size += med_diff >> 1;
-        }
-        else
-        {
-            const size_t difference = initial_allocated - offset;
-            const size_t med_diff = difference / (num_items * 2);
-            const size_t diff_small = difference >> 4;
-            const size_t med_small = med_diff >> 5;
-
-            if (diff_small + 64 < avg_realloc_size)
-                avg_realloc_size -= diff_small;
-            else
-                avg_realloc_size = 64;
-
-            if (med_small + 4 < avg_item_size)
-                avg_item_size -= med_small;
-            else
-                avg_item_size = 4;
-        }
-    }
+    update_allocation_settings(initial_allocated, num_items * 2);
 
     PyObject *result = PyBytes_FromStringAndSize(msg, offset);
 
@@ -759,9 +701,9 @@ static PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
         return PyBytes_FromStringAndSize(&buf, 1);
     }
     case 'l': // List
-        return encode_list(value, strict);
+        return strict == 0 ? encode_list(value) : encode_list_strict(value);
     case 'd': // Dict
-        return encode_dict(value, strict);
+        return strict == 0 ? encode_dict(value) : encode_dict(value);
     }
 
     PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name);

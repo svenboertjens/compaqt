@@ -6,35 +6,49 @@ validate = compaqt.validate
 
 class Test():
     def __init__(self):
-        self.fails = 0
         self.failed = []
+        self.other = []
+    
+    def shortval(self, value):
+        strval = str(value)
+        
+        if len(strval) > 64:
+            strval = strval[:64] + " ... (cut off)"
+        
+        return strval
     
     def test(self, value):
         encoded = encode(value)
         
-        if decode(encoded) != value:
-            strval = str(value)
-            
-            if len(strval) > 64:
-                strval = strval[:64] + " ... (cut off)"
-            
-            self.failed.append(strval)
-            self.fails += 1
-        elif not validate(encoded):
-            print("Incorrectly invalidated!")
+        try:
+            if decode(encoded) != value:
+                strval = self.shortval(value)
+                
+                self.failed.append(strval)
+                
+                if validate(encoded):
+                    self.other.append((strval, "Deemed valid while value was not correct"))
+                
+            elif not validate(encoded):
+                self.other.append((self.shortval(value), "Deemed invalid while value was correct"))
+        
+        except Exception as e:
+            self.other.append((self.shortval(value), f"Received exception: {e}"))
     
     def finalize(self):
-        if self.fails == 0:
+        if len(self.failed) + len(self.other) == 0:
             print("No issues found!")
         else:
-            print("Failed for values:")
-            for strval in self.failed:
-                print(strval)
+            if len(self.failed) != 0:
+                print("Failed for values:")
+                print(''.join(value + '\n' for value in self.failed))
             
-            print(f"\nFailed {self.fails} times.")
+            if len(self.other) != 0:
+                print("Got messages for values:")
+                print(''.join([f"{value}: {message}\n" for value, message in self.other]))
         
-        self.fails = 0
         self.failed = []
+        self.other = []
     
     def test_values(self, values):
         for value in values:

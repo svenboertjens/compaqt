@@ -3,6 +3,13 @@
 All changes to the `compaqt` module are documented here.
 
 
+## [0.3.1] - 2024-10-04
+
+### Updates:
+- Switched from global variables to structs for thread safety (and future streaming update).
+- Switched from one big file to multiple files for readability and maintainability purposes.
+
+
 ## [0.3.0] - 2024-10-03
 
 ### Fixes:

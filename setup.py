@@ -26,10 +26,13 @@ ext_modules = [
     Extension(
         'compaqt.compaqt',
         sources=[
-            'compaqt/compaqt.c'
+            'compaqt/compaqt.c',
+            'compaqt/serialization/regular.c'
         ],
         include_dirs=[
-            '.'
+            '.',
+            'compaqt',
+            'compaqt/serialization'
         ],
         define_macros=macros
     ),
@@ -37,7 +40,7 @@ ext_modules = [
 
 setup(
     name="compaqt",
-    version="0.3.0",
+    version="0.3.1",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",
@@ -55,7 +58,7 @@ setup(
     
     ext_modules=ext_modules,
     package_data={
-        '': ['*.pyi']
+        '': ['*.pyi', '*.h']
     },
     
     cmdclass={'build_ext': CustomBuildExt},

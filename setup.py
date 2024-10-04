@@ -31,8 +31,8 @@ ext_modules = [
         ],
         include_dirs=[
             '.',
-            'compaqt',
-            'compaqt/serialization'
+            'compaqt/',
+            'compaqt/serialization/'
         ],
         define_macros=macros
     ),
@@ -40,7 +40,7 @@ ext_modules = [
 
 setup(
     name="compaqt",
-    version="0.3.1",
+    version="0.3.2-4",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",
@@ -52,14 +52,14 @@ setup(
     
     url="https://github.com/svenboertjens/compaqt",
     
-    packages=find_packages(),
-    include_package_data=True,
+    packages=['compaqt'],
     install_requires=[],
     
     ext_modules=ext_modules,
     package_data={
-        '': ['*.pyi', '*.h']
+        'compaqt': ['*.pyi', 'serialization/*']
     },
+    include_package_data=True,
     
     cmdclass={'build_ext': CustomBuildExt},
     classifiers=[

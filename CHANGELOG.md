@@ -3,11 +3,19 @@
 All changes to the `compaqt` module are documented here.
 
 
-## [0.3.1] - 2024-10-04
+## [0.3.2] - 2024-10-04
+
+### Fixes:
+- Fix fatal include error from [0.3.1];
+
+
+## [0.3.1] - 2024-10-04 (DELETED)
+
+Deleted due to an include error.
 
 ### Updates:
-- Switched from global variables to structs for thread safety (and future streaming update).
-- Switched from one big file to multiple files for readability and maintainability purposes.
+- Switched from global variables to structs for thread safety (and future streaming and chunk processing update);
+- Switched from one big file to multiple files for readability and maintainability purposes;
 
 
 ## [0.3.0] - 2024-10-03

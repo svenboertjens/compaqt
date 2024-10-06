@@ -5,13 +5,6 @@
 #include <Python.h>
 #include "globals.h"
 
-// Average size of items
-size_t avg_item_size = 32;
-// Average size of re-allocations
-size_t avg_realloc_size = 512;
-// Whether to dymically adjust allocation settings
-char dynamic_allocation_tweaks = 1;
-
 /* ENCODING */
 
 // Reallocate the message buffer by a set amount
@@ -39,7 +32,6 @@ char dynamic_allocation_tweaks = 1;
 #define DT_CHECK(expected) do { \
     if (type != &expected) \
     { \
-        Py_DECREF(item); \
         PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name); \
         return 1; \
     } \
@@ -62,14 +54,14 @@ static inline int encode_container_item(buffer_t *b, PyObject *item)
             const size_t length = bytes_ln(item);
 
             OFFSET_CHECK(length + MAX_VLE_METADATA_SIZE);
-            WR_METADATA_VLE(DT_BYTES, length);
+            WR_METADATA_VLE(b, DT_BYTES, length);
 
             bytes_wr(b, item, length);
         }
         else // Boolean
         {
             OFFSET_CHECK(1);
-            bool_wr(item);
+            bool_wr(b, item);
         }
         break;
     }
@@ -80,7 +72,7 @@ static inline int encode_container_item(buffer_t *b, PyObject *item)
         const size_t length = string_ln(item);
 
         OFFSET_CHECK(length + MAX_VLE_METADATA_SIZE);
-        WR_METADATA_VLE(DT_STRNG, length);
+        WR_METADATA_VLE(b, DT_STRNG, length);
 
         string_wr(b, item, length);
         break;
@@ -92,7 +84,7 @@ static inline int encode_container_item(buffer_t *b, PyObject *item)
         const size_t length = integer_ln(item);
 
         OFFSET_CHECK(length + MAX_VLE_METADATA_SIZE);
-        WR_METADATA_VLE(DT_INTGR, length);
+        WR_METADATA_VLE(b, DT_INTGR, length);
 
         integer_wr(b, item, length);
         break;
@@ -127,7 +119,7 @@ static inline int encode_container_item(buffer_t *b, PyObject *item)
         DT_CHECK(PyList_Type);
 
         const size_t num_items = (size_t)(PyList_GET_SIZE(item));
-        WR_METADATA_VLE(DT_ARRAY, num_items);
+        WR_METADATA_VLE(b, DT_ARRAY, num_items);
 
         for (size_t i = 0; i < num_items; ++i)
             if (encode_container_item(b, PyList_GET_ITEM(item, i)) == 1) return 1;
@@ -137,14 +129,25 @@ static inline int encode_container_item(buffer_t *b, PyObject *item)
     case 'd': // Dict
     {
         DT_CHECK(PyDict_Type);
-        WR_METADATA_VLE(DT_DICTN, PyDict_GET_SIZE(item));
+        WR_METADATA_VLE(b, DT_DICTN, PyDict_GET_SIZE(item));
 
         Py_ssize_t pos = 0;
         PyObject *key, *val;
         while (PyDict_Next(item, &pos, &key, &val))
         {
-            if (encode_container_item(b, key) == 1) return 1;
-            if (encode_container_item(b, val) == 1) return 1;
+            if (encode_container_item(b, key) == 1)
+            {
+                Py_DECREF(key);
+                return 1;
+            }
+            Py_DECREF(key);
+
+            if (encode_container_item(b, val) == 1)
+            {
+                Py_DECREF(val);
+                return 1;
+            }
+            Py_DECREF(val);
         }
         break;
     }
@@ -156,38 +159,6 @@ static inline int encode_container_item(buffer_t *b, PyObject *item)
     }
 
     return 0;
-}
-
-static inline void update_allocation_settings(buffer_t *b, const size_t initial_allocated, const size_t num_items)
-{
-    if (dynamic_allocation_tweaks == 1)
-    {
-        if (b->reallocs != 0)
-        {
-            const size_t difference = b->offset - initial_allocated;
-            const size_t med_diff = difference / num_items;
-
-            avg_realloc_size += difference >> 1;
-            avg_item_size += med_diff >> 1;
-        }
-        else
-        {
-            const size_t difference = initial_allocated - b->offset;
-            const size_t med_diff = difference / num_items;
-            const size_t diff_small = difference >> 4;
-            const size_t med_small = med_diff >> 5;
-
-            if (diff_small + 64 < avg_realloc_size)
-                avg_realloc_size -= diff_small;
-            else
-                avg_realloc_size = 64;
-
-            if (med_small + 4 < avg_item_size)
-                avg_item_size -= med_small;
-            else
-                avg_item_size = 4;
-        }
-    }
 }
 
 // Encode a list type
@@ -217,7 +188,7 @@ static inline PyObject *encode_list(buffer_t *b, PyObject *value)
 
     b->allocated = initial_allocated;
 
-    WR_METADATA_VLE(DT_ARRAY, num_items);
+    WR_METADATA_VLE(b, DT_ARRAY, num_items);
 
     for (size_t i = 0; i < num_items; ++i)
     {
@@ -228,7 +199,7 @@ static inline PyObject *encode_list(buffer_t *b, PyObject *value)
         }
     }
     
-    update_allocation_settings(b, initial_allocated, num_items);
+    update_allocation_settings(b->reallocs, b->offset, initial_allocated, num_items);
 
     PyObject *result = PyBytes_FromStringAndSize(b->msg, b->offset);
 
@@ -263,7 +234,7 @@ static inline PyObject *encode_dict(buffer_t *b, PyObject *value)
 
     b->allocated = initial_allocated;
 
-    WR_METADATA_VLE(DT_DICTN, num_items);
+    WR_METADATA_VLE(b, DT_DICTN, num_items);
 
     Py_ssize_t pos = 0;
     PyObject *key, *val;
@@ -276,7 +247,7 @@ static inline PyObject *encode_dict(buffer_t *b, PyObject *value)
         }
     }
     
-    update_allocation_settings(b, initial_allocated, num_items * 2);
+    update_allocation_settings(b->reallocs, b->offset, initial_allocated, num_items * 2);
 
     PyObject *result = PyBytes_FromStringAndSize(b->msg, b->offset);
 
@@ -302,7 +273,7 @@ static inline PyObject *encode_dict(buffer_t *b, PyObject *value)
     } \
     \
     b.offset = 1; \
-    DT_WR(&b, value, length); \
+    DT_WR((&b), value, length); \
     *(b.msg) = dt_mask; \
     \
     PyObject *result = PyBytes_FromStringAndSize(b.msg, length + 1); \
@@ -409,15 +380,17 @@ PyObject *encode_regular(PyObject *value)
 // Decode a single item
 #define DECODE_ITEM(rd_func) do { \
     size_t length = 0; \
-    RD_METADATA_VLE(length); \
+    RD_METADATA_VLE(b, length); \
     OVERREAD_CHECK(length); \
-    return rd_func(b, length); \
+    PyObject *value; \
+    rd_func(b, value, length); \
+    return value; \
 } while (0)
 
 // Decode an item inside a container
 static PyObject *decode_container_item(buffer_t *b)
 {
-    const char dt_mask = RD_DTMASK();
+    const char dt_mask = RD_DTMASK(b);
 
     switch (dt_mask)
     {
@@ -426,13 +399,25 @@ static PyObject *decode_container_item(buffer_t *b)
     case DT_INTGR: DECODE_ITEM(integer_rd);
     case DT_GROUP:
     {
-        const char act_mask = RD_DTMASK_GROUP();
+        const char act_mask = RD_DTMASK_GROUP(b);
         OVERREAD_CHECK(0);
 
         switch (act_mask)
         {
-        case DT_FLOAT: OVERREAD_CHECK(8);  return float_rd(b);
-        case DT_CMPLX: OVERREAD_CHECK(16); return complex_rd(b);
+        case DT_FLOAT:
+        {
+            OVERREAD_CHECK(8);
+            PyObject *value;
+            float_rd(b, value);
+            return value;
+        }
+        case DT_CMPLX:
+        {
+            OVERREAD_CHECK(16);
+            PyObject *value;
+            complex_rd(b, value);
+            return value;
+        }
         case DT_BOOLT: Py_RETURN_TRUE;
         case DT_BOOLF: Py_RETURN_FALSE;
         case DT_NONTP: Py_RETURN_NONE;
@@ -441,7 +426,7 @@ static PyObject *decode_container_item(buffer_t *b)
     case DT_ARRAY:
     {
         size_t num_items = 0;
-        RD_METADATA_VLE(num_items);
+        RD_METADATA_VLE(b, num_items);
         OVERREAD_CHECK(0);
 
         PyObject *list = PyList_New(num_items);
@@ -471,7 +456,7 @@ static PyObject *decode_container_item(buffer_t *b)
     case DT_DICTN:
     {
         size_t num_items = 0;
-        RD_METADATA_VLE(num_items);
+        RD_METADATA_VLE(b, num_items);
         OVERREAD_CHECK(0);
 
         PyObject *dict = PyDict_New();
@@ -518,19 +503,21 @@ PyObject *decode_regular(PyObject *value)
         return NULL;
     }
 
+    PyObject *result;
+
     switch (*(b->msg) & 0b00000111)
     {
-    case DT_BYTES: b->offset = 1; return bytes_rd(b, b->allocated - 1);
-    case DT_STRNG: b->offset = 1; return string_rd(b, b->allocated - 1);
-    case DT_INTGR: b->offset = 1; return integer_rd(b, b->allocated - 1);
+    case DT_BYTES: b->offset = 1; bytes_rd(b, result, b->allocated - 1); break;
+    case DT_STRNG: b->offset = 1; string_rd(b, result, b->allocated - 1); break;
+    case DT_INTGR: b->offset = 1; integer_rd(b, result, b->allocated - 1); break;
     case DT_GROUP:
     {
         b->offset = 1;
 
         switch (*(b->msg))
         {
-        case DT_FLOAT: OVERREAD_CHECK(8);  return float_rd(b);
-        case DT_CMPLX: OVERREAD_CHECK(16); return complex_rd(b);
+        case DT_FLOAT: OVERREAD_CHECK(8); float_rd(b, result); break;
+        case DT_CMPLX: OVERREAD_CHECK(16); complex_rd(b, result); break;
         case DT_BOOLT: Py_RETURN_TRUE;
         case DT_BOOLF: Py_RETURN_FALSE;
         case DT_NONTP: Py_RETURN_NONE;
@@ -542,12 +529,12 @@ PyObject *decode_regular(PyObject *value)
         b->offset = 0;
 
         size_t num_items = 0;
-        RD_METADATA_VLE(num_items);
+        RD_METADATA_VLE(b, num_items);
         OVERREAD_CHECK(0); // Check whether reading the metadata didn't exceed the allocation size
 
-        PyObject *list = PyList_New(num_items);
+        result = PyList_New(num_items);
 
-        if (list == NULL)
+        if (result == NULL)
         {
             PyErr_Format(PyExc_RuntimeError, "Failed to create a list object of size '%zu'", num_items);
             return NULL;
@@ -558,26 +545,26 @@ PyObject *decode_regular(PyObject *value)
         {
             if ((item = decode_container_item(b)) == NULL)
             {
-                Py_DECREF(list);
+                Py_DECREF(result);
                 return NULL;
             }
 
-            PyList_SET_ITEM(list, i, item);
+            PyList_SET_ITEM(result, i, item);
         }
 
-        return list;
+        break;
     }
     case DT_DICTN:
     {
         b->offset = 0;
 
         size_t num_items = 0;
-        RD_METADATA_VLE(num_items);
+        RD_METADATA_VLE(b, num_items);
         OVERREAD_CHECK(0);
 
-        PyObject *dict = PyDict_New();
+        result = PyDict_New();
 
-        if (dict == NULL)
+        if (result == NULL)
         {
             PyErr_SetString(PyExc_RuntimeError, "Failed to create a dict object");
             return NULL;
@@ -589,19 +576,23 @@ PyObject *decode_regular(PyObject *value)
 
             if ((key = decode_container_item(b)) == NULL || (val = decode_container_item(b)) == NULL)
             {
-                Py_DECREF(dict);
+                Py_DECREF(result);
                 return NULL;
             }
 
-            PyDict_SetItem(dict, key, val);
+            PyDict_SetItem(result, key, val);
         }
 
-        return dict;
+        break;
+    }
+    default:
+    {
+        // Invalid input
+        SET_INVALID_ERR();
+        return NULL;
     }
     }
 
-    // Invalid input
-    SET_INVALID_ERR();
-    return NULL;
+    return result;
 }
 

@@ -3,44 +3,19 @@
 #include <Python.h>
 #include "globals.h"
 #include "regular.h"
+#include "stream.h"
 
-#define ENCODE_SINGLE_VALUE_TOFILE(expected, dt_mask, DT_LN, DT_WR) do { \
-    if (type != &expected) \
-    { \
-        PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name); \
-        fclose(file); \
-        return NULL; \
-    } \
-    \
-    const size_t length = DT_LN(value); \
-    \
-    msg = (char *)malloc(length + 1); \
-    if (msg == NULL) \
-    { \
-        PyErr_NoMemory(); \
-        fclose(file); \
-        return NULL; \
-    } \
-    \
-    offset = 1; \
-    DT_WR(value, length); \
-    *(msg) = dt_mask; \
-    \
-    fwrite(&msg, length + 1, 1, file); \
-    fclose(file); \
-    \
-    free(msg); \
-    Py_RETURN_NONE; \
-} while (0)
+/* ENCODING */
 
 // Main function for encoding objects
 static PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     PyObject *value;
+    Py_ssize_t chunk_size = -1;
 
-    static char *kwlist[] = {"value", NULL};
+    static char *kwlist[] = {"value", "chunk_size", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|", kwlist, &value))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|n", kwlist, &value, &chunk_size))
     {
         PyErr_SetString(PyExc_ValueError, "Expected at least the 'value' (any) input");
         return NULL;
@@ -65,6 +40,8 @@ static PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
     return decode_regular(value);
 }
 
+/* STREAMING */
+
 /* VALIDATION */
 
 #define VALIDATE_OVERREAD_CHECK(length) do { \
@@ -75,11 +52,11 @@ static inline int _validate(buffer_t *b)
 {
     VALIDATE_OVERREAD_CHECK(1);
 
-    switch (RD_DTMASK())
+    switch (RD_DTMASK(b))
     {
     case DT_GROUP: // Group datatypes
     {
-        switch (RD_DTMASK_GROUP())
+        switch (RD_DTMASK_GROUP(b))
         {
         // Static lengths, no metadata to read, already incremented by `RD_DTMASK_GROUP`
         case DT_FLOAT: VALIDATE_OVERREAD_CHECK(8); b->offset += 8;  return 0;
@@ -93,7 +70,7 @@ static inline int _validate(buffer_t *b)
     case DT_ARRAY:
     {
         size_t num_items = 0;
-        RD_METADATA_VLE(num_items);
+        RD_METADATA_VLE(b, num_items);
         VALIDATE_OVERREAD_CHECK(0); // Check whether the metadata reading didn't cross the boundary
 
         for (size_t i = 0; i < num_items; ++i)
@@ -104,7 +81,7 @@ static inline int _validate(buffer_t *b)
     case DT_DICTN:
     {
         size_t num_items = 0;
-        RD_METADATA_VLE(num_items);
+        RD_METADATA_VLE(b, num_items);
         VALIDATE_OVERREAD_CHECK(0);
 
         for (size_t i = 0; i < (num_items * 2); ++i)
@@ -118,7 +95,7 @@ static inline int _validate(buffer_t *b)
     {
         // All other cases use VLE metadata, so read length and increment offset using it
         size_t length = 0;
-        RD_METADATA_VLE(length);
+        RD_METADATA_VLE(b, length);
         VALIDATE_OVERREAD_CHECK(length);
         b->offset += length;
         return 0;
@@ -217,6 +194,7 @@ static PyMethodDef CompaqtMethods[] = {
     {"encode", (PyCFunction)encode, METH_VARARGS | METH_KEYWORDS, "Encode a value to bytes"},
     {"decode", (PyCFunction)decode, METH_VARARGS | METH_KEYWORDS, "Decode a value from bytes"},
     {"validate", (PyCFunction)validate, METH_VARARGS | METH_KEYWORDS, "Validate an encoded object"},
+    {"StreamEncoder", (PyCFunction)get_stream_encoder, METH_VARARGS | METH_KEYWORDS, "Get a stream encoder object to serialize data to a file"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -227,7 +205,7 @@ static PyMethodDef SettingsMethods[] = {
     {NULL, NULL, 0, NULL}
 };
 
-static PyTypeObject settings = {
+static PyTypeObject settings_obj = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "compaqt.settings",
     .tp_basicsize = sizeof(PyObject),
@@ -245,20 +223,23 @@ static struct PyModuleDef compaqt = {
 };
 
 PyMODINIT_FUNC PyInit_compaqt(void) {
-    if (PyType_Ready(&settings) < 0)
+    if (PyType_Ready(&settings_obj) < 0)
         return NULL;
 
+    // Create the main module
     PyObject *m = PyModule_Create(&compaqt);
     if (m == NULL) return NULL;
 
-    PyObject *s = PyObject_New(PyObject, &settings);
-    if (s == NULL)
+    // Create settings submodule
+    PyObject *settings = PyObject_New(PyObject, &settings_obj);
+    if (settings == NULL)
     {
         Py_DECREF(m);
         return NULL;
     }
 
-    PyModule_AddObject(m, "settings", s);
+    // Add submodules to the main module
+    PyModule_AddObject(m, "settings", settings);
 
     return m;
 }

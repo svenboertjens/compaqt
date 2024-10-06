@@ -1,6 +1,6 @@
 # Compaqt
 
-A serializer that aims for compactness and performance.
+A compact serializer aiming for flexibility and performance.
 
 
 ## Installation

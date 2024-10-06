@@ -27,7 +27,9 @@ ext_modules = [
         'compaqt.compaqt',
         sources=[
             'compaqt/compaqt.c',
-            'compaqt/serialization/regular.c'
+            'compaqt/globals.c',
+            'compaqt/serialization/regular.c',
+            'compaqt/serialization/stream.c',
         ],
         include_dirs=[
             '.',
@@ -40,12 +42,12 @@ ext_modules = [
 
 setup(
     name="compaqt",
-    version="0.3.2-4",
+    version="0.3.2",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",
     
-    description="A serializer that aims for compactness and performance.",
+    description="A compact serializer aiming for flexibility and performance",
     
     long_description=open('README.md', 'r').read(),
     long_description_content_type="text/markdown",

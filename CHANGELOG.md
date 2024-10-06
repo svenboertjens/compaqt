@@ -3,6 +3,13 @@
 All changes to the `compaqt` module are documented here.
 
 
+## [0.4.0] - 2024-10-05
+
+### Updates:
+- Support streaming to/from files;
+- Support chunk processing;
+
+
 ## [0.3.2] - 2024-10-04
 
 ### Fixes:

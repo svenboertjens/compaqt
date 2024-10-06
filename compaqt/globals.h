@@ -1,15 +1,22 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
-// This file contains the metadata macros
-
-// FOR METADATA DOCUMENTATION, SEE "docs/metadata.md"
+// This file contains methods used in multiple files
 
 #include <Python.h>
 
 // These macros will be overwritten by the setup.py when needed
 #define IS_LITTLE_ENDIAN 1 // Endianness to follow
 #define STRICT_ALIGNMENT 0 // Whether to use strict alignment
+
+/* ALLOC SETTINGS */
+
+// Average size of items
+extern size_t avg_item_size;
+// Average size of re-allocations
+extern size_t avg_realloc_size;
+// Whether to dymically adjust allocation settings
+extern char dynamic_allocation_tweaks;
 
 // Struct to hold serialization data
 typedef struct {
@@ -19,11 +26,48 @@ typedef struct {
     int reallocs;
 } buffer_t;
 
+static inline void update_allocation_settings(const int reallocs, const size_t offset, const size_t initial_allocated, const size_t num_items)
+{
+    if (dynamic_allocation_tweaks == 1)
+    {
+        if (reallocs != 0)
+        {
+            const size_t difference = offset - initial_allocated;
+            const size_t med_diff = difference / num_items;
+
+            avg_realloc_size += difference >> 1;
+            avg_item_size += med_diff >> 1;
+        }
+        else
+        {
+            const size_t difference = initial_allocated - offset;
+            const size_t med_diff = difference / num_items;
+            const size_t diff_small = difference >> 4;
+            const size_t med_small = med_diff >> 5;
+
+            if (diff_small + 64 < avg_realloc_size)
+                avg_realloc_size -= diff_small;
+            else
+                avg_realloc_size = 64;
+
+            if (med_small + 4 < avg_item_size)
+                avg_item_size -= med_small;
+            else
+                avg_item_size = 4;
+        }
+    }
+}
+
+/* METADATA */
+
+// FOR METADATA DOCUMENTATION, SEE "docs/metadata.md"
+
+
 // The maximum bytes VLE metadata will take up
 #define MAX_VLE_METADATA_SIZE 9
 
 // Write Variable Length Encoding (VLE) metadata
-#define WR_METADATA_VLE(dt_mask, length) do { \
+#define WR_METADATA_VLE(b, dt_mask, length) do { \
     const int mode = !!(length >> 4) + !!(length >> 11); \
     switch (mode) \
     { \
@@ -57,7 +101,7 @@ typedef struct {
 } while (0)
 
 // Read VLE metadata
-#define RD_METADATA_VLE(length) do { \
+#define RD_METADATA_VLE(b, length) do { \
     const int mode = *(b->msg + b->offset) & 0b00011000; \
     \
     switch (mode) \
@@ -91,9 +135,9 @@ typedef struct {
 } while (0)
 
 // Read a datamask (stored in first 3 bits)
-#define RD_DTMASK() (*(b->msg + b->offset) & 0b00000111)
+#define RD_DTMASK(b) (*(b->msg + b->offset) & 0b00000111)
 // Read a group datamask (takes up entire byte)
-#define RD_DTMASK_GROUP() (*(b->msg + b->offset++))
+#define RD_DTMASK_GROUP(b) (*(b->msg + b->offset++))
 
 /* ENDIANNESS TRANSFORMATIONS */
 
@@ -173,130 +217,97 @@ typedef struct {
 
 /* DATATYPE CONVERSION */
 
-static inline size_t bytes_ln(PyObject *value)
-{
-    return PyBytes_GET_SIZE(value);
-}
-static inline void bytes_wr(buffer_t *b, const PyObject *value, const size_t length)
-{
-    const char *ptr = PyBytes_AS_STRING(value);
-    memcpy(b->msg + b->offset, ptr, length);
-    b->offset += length;
-}
-static inline PyObject *bytes_rd(buffer_t *b, const size_t length)
-{
-    PyObject *result = PyBytes_FromStringAndSize(b->msg + b->offset, (Py_ssize_t)(length));
-    b->offset += length;
-    return result;
-}
+#define bytes_ln(value) (PyBytes_GET_SIZE(value))
+#define bytes_wr(b, value, length) do { \
+    const char *ptr = PyBytes_AS_STRING(value); \
+    memcpy(b->msg + b->offset, ptr, length); \
+    b->offset += length; \
+} while (0)
+#define bytes_rd(b, value, length) do { \
+    value = PyBytes_FromStringAndSize(b->msg + b->offset, (Py_ssize_t)(length)); \
+    b->offset += length; \
+} while (0)
 
-static inline size_t string_ln(PyObject *value)
-{
-    return PyUnicode_GET_LENGTH(value) * PyUnicode_KIND(value);
-}
-static inline void string_wr(buffer_t *b, PyObject *value, const size_t length)
-{
-    memcpy(b->msg + b->offset, PyUnicode_DATA(value), length);
-    b->offset += length;
-}
-static inline PyObject *string_rd(buffer_t *b, const size_t length)
-{
-    PyObject *result = PyUnicode_FromStringAndSize(b->msg + b->offset, length);
-    b->offset += length;
-    return result;
-}
+#define string_ln(value) (PyUnicode_GET_LENGTH(value) * PyUnicode_KIND(value))
+#define string_wr(b, value, length) do { \
+    memcpy(b->msg + b->offset, PyUnicode_DATA(value), length); \
+    b->offset += length; \
+} while (0)
+#define string_rd(b, value, length) do { \
+    value = PyUnicode_FromStringAndSize(b->msg + b->offset, length); \
+    b->offset += length; \
+} while (0)
 
-static inline size_t integer_ln(PyObject *value)
-{
-    const size_t length = (_PyLong_NumBits(value) + 8) >> 3;
-    return length == 0 ? 1 : length;
-}
-static inline void integer_wr(buffer_t *b, PyObject *value, const size_t length)
-{
-    if (length > sizeof(long long))
-        _PyLong_AsByteArray((PyLongObject *)value, (unsigned char *)(b->msg + b->offset), length, IS_LITTLE_ENDIAN, 1);
-    else
-    {
-        #if (STRICT_ALIGNMENT == 0)
-
-            *(long long *)(b->msg + b->offset) = LL_LITTLE_ENDIAN(PyLong_AsLongLong(value));
-
-        #else
-
-            const long long num = LL_LITTLE_ENDIAN(PyLong_AsLongLong(value));
-            memcpy(msg + offset, &num, length);
-
-        #endif
-
-        b->offset += length;
-    }
-}
-static inline PyObject *integer_rd(buffer_t *b, const size_t length)
-{
-    PyObject *result = _PyLong_FromByteArray((const unsigned char *)(b->msg + b->offset), length, IS_LITTLE_ENDIAN, 1);
-    b->offset += length;
-    return result;
-}
-
+#define integer_ln(value) ((_PyLong_NumBits(value) + 8) >> 3)
 #if (STRICT_ALIGNMENT == 0)
 
-    static inline void float_wr(buffer_t *b, const PyObject *value)
-    {
-        *(double *)(b->msg + b->offset) = DB_LITTLE_ENDIAN(PyFloat_AS_DOUBLE(value));
-        b->offset += sizeof(double);
-    }
-    static inline PyObject *float_rd(buffer_t *b)
-    {
-        PyObject *result = PyFloat_FromDouble(DB_LITTLE_ENDIAN(*(double *)(b->msg + b->offset)));
-        b->offset += sizeof(double);
-        return result;
-    }
+    #define integer_wr(b, value, length) do { \
+        *(long long *)(b->msg + b->offset) = LL_LITTLE_ENDIAN(PyLong_AsLongLong(value)); \
+        b->offset += length; \
+    } while (0)
+    #define integer_rd(b, value, length) do { \
+        value = PyLong_FromLongLong(*(long long *)(b->msg + b->offset)); \
+        b->offset += length; \
+    } while (0)
 
-    static inline void complex_wr(buffer_t *b, PyObject *value)
-    {
-        *(Py_complex *)(b->msg + b->offset) = PyComplex_AsCComplex(value);
-        b->offset += sizeof(Py_complex);
-    }
-    static inline PyObject *complex_rd(buffer_t *b)
-    {
-        PyObject *result = PyComplex_FromCComplex(*(Py_complex *)(b->msg + b->offset));
-        b->offset += sizeof(Py_complex);
-        return result;
-    }
+    #define float_wr(b, value) do { \
+        *(double *)(b->msg + b->offset) = DB_LITTLE_ENDIAN(PyFloat_AS_DOUBLE(value)); \
+        b->offset += 8; \
+    } while (0)
+    #define float_rd(b, value) do { \
+        value = PyFloat_FromDouble(*(double *)(b->msg + b->offset)); \
+        b->offset = 8; \
+    } while (0)
+
+    #define complex_wr(b, value) do { \
+        *(Py_complex *)(b->msg + b->offset) = PyComplex_AsCComplex(value); \
+        b->offset += sizeof(Py_complex); \
+    } while (0)
+    #define complex_rd(b, value) do { \
+        value = PyComplex_FromCComplex(*(Py_complex *)(b->msg + b->offset)); \
+        b->offset += sizeof(Py_complex); \
+    } while (0)
 
 #else
 
-    static inline void float_wr(buffer_t *b, const PyObject *value)
-    {
-        double num = DB_LITTLE_ENDIAN(PyFloat_AS_DOUBLE(value));
-        memcpy(b->msg + b->offset, &num, sizeof(double));
-        b->offset += sizeof(double);
-    }
-    static inline PyObject *float_rd(buffer_t *b)
-    {
-        double num;
-        memcpy(&num, b->msg + b->offset, sizeof(double));
-        b->offset += sizeof(double);
-        return PyFloat_FromDouble(DB_LITTLE_ENDIAN(num));
-    }
+    #define integer_wr(b, value, length) do { \
+        const long long num = LL_LITTLE_ENDIAN(PyLong_AsLongLong(value)); \
+            memcpy(msg + offset, &num, length); \
+        b->offset += length; \
+    } while (0)
+    #define integer_rd(b, value, length) do { \
+        const long long num;
+        memcpy(&num, b->msg + b->offset, sizeof(long long)); \
+        value = PyLong_FromLongLong(num); \
+        b->offset += length; \
+    } while (0)
 
-    static inline void complex_wr(buffer_t *b, const PyObject *value)
-    {
-        Py_complex complex = PyComplex_AsCComplex(value);
-        memcpy(b->msg + b->offset, &complex, sizeof(Py_complex));
-        b->offset += sizeof(Py_complex);
-    }
-    static inline PyObject *complex_rd(buffer_t *b)
-    {
-        Py_complex complex;
-        memcpy(&complex, b->msg + b->offset, sizeof(Py_complex));
-        PyObject *result = PyComplex_FromCComplex(complex);
-        b->offset += sizeof(Py_complex);
-        return result;
-    }
+    #define float_wr(b, value) do { \
+        double num = DB_LITTLE_ENDIAN(PyFloat_AS_DOUBLE(value)); \
+        memcpy(b->msg + b->offset, &num, 8); \
+        b->offset += 8; \
+    } while (0)
+    #define float_rd(b, value) do { \
+        double num; \
+        memcpy(&num, b->msg + b->offset, 8); \
+        value = PyFloat_FromDouble(DB_LITTLE_ENDIAN(num)); \
+        b->offset += 8; \
+    } while (0)
+
+    #define complex_wr(b, value) do { \
+        Py_complex complex = PyComplex_AsCComplex(value); \
+        memcpy(b->msg + b->offset, &complex, sizeof(Py_complex)); \
+        b->offset += sizeof(Py_complex); \
+    } while (0)
+    #define complex_rd(b, value) do { \
+        Py_complex complex; \
+        memcpy(&complex, b->msg + b->offset, sizeof(Py_complex)); \
+        value = PyComplex_FromCComplex(complex); \
+        b->offset += sizeof(Py_complex); \
+    } while (0)
 
 #endif
 
-#define bool_wr(value) (*(b->msg + b->offset++) = DT_BOOLF | (!!(value == Py_True) << 3))
+#define bool_wr(b, value) (*(b->msg + b->offset++) = DT_BOOLF | (!!(value == Py_True) << 3))
 
 #endif // GLOBALS_H

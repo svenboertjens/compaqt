@@ -3,11 +3,22 @@
 All changes to the `compaqt` module are documented here.
 
 
-## [0.4.0] - 2024-10-05
+## [0.4.0] - 2024-10-13
+
+### Fixes:
+- Fix support for UTF-8 (previously only worked with ASCII);
+- Improved safety and error handling;
+- Fix memory leaks from lack of cleanup in error cases;
 
 ### Updates:
-- Support streaming to/from files;
-- Support chunk processing;
+- Support streaming with files:
+    * Incrementally read/write data with StreamEncoder/StreamDecoder objects;
+    * Directly read/write data with the regular encode/decode methods;
+    * Fully compatible and interchangeable with regular serialization;
+- Improve args parsing error messages;
+- Change metadata length structure for efficiency;
+- Change how singular values (values not within a container) are stored (improves code size and clarity);
+- better endianness handling;
 
 
 ## [0.3.2] - 2024-10-04

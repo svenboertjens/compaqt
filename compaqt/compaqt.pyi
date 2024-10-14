@@ -62,7 +62,7 @@ class StreamEncoder:
     - `chunk_size`:     How large the memory buffer for storing the encoded object can be before writing to the file.
     - `resume_stream`:  If the stream was already initialized and you want to continue streaming to it.
     - `file_offset`:    What file position offset to start the stream at.
-    - `preserve_file`:  If the current file needs to be preserved and the stream should start at the end of the file. Overrides the `resume_stream` and `stream_offset` args.
+    - `preserve_file`:  If the current file needs to be preserved and the stream should start at the end of the file. Overrides the `resume_stream` and `file_offset` args.
     
     Returns an Encoding Stream object to update the stream with.
     
@@ -70,15 +70,18 @@ class StreamEncoder:
     >>> stream = compaqt.StreamEncoder('myFolder/myFile.ext', list)
     """
     
-    def __init__(self, file_name: str, value_type: type, chunk_size: int=1024*1024*8, resume_stream: bool=False, stream_offset: int=0, preserve_file: bool=False) -> self:
+    def __init__(self, file_name: str, value_type: type=..., chunk_size: int=1024*1024*8, resume_stream: bool=False, file_offset: int=0, preserve_file: bool=False) -> self:
+        self.start_offset: int = ...
+        self.curr_offset: int = ...
         ...
     
-    def update(self, value: any, clear_memory: bool=False) -> None:
+    def write(self, value: any, clear_memory: bool=False, chunk_size: int=...) -> None:
         """Update an encoding stream by adding new data to it
         
         Args:
         - `value`:         The value to encode. Has to be of the type defined in the `get_encoder` method.
-        - `clear_memory`:  Whether to clear the memory chunk after serializing instead of preserving it for the next call.
+        - `clear_memory`:  Whether to clear the allocated memory chunk after serializing instead of preserving it for the next call.
+        - `chunk_size`:    Set the chunk size of the memory chunk. Defaults to the currently set value.
         
         Usage:
         >>> stream.update(['a', 'b', 'c'])
@@ -93,10 +96,50 @@ class StreamEncoder:
         """
         ...
 
+class StreamDecoder:
+    """Create a decoding stream for reading and decoding data directly from a file.
+    
+    Args:
+    - `file_name`:    The path to the file to read from.
+    - `chunk_size`:   How much memory to allocate for temporarily storing the encoded data from the file.
+    - `file_offset`:  What file position offset to start the stream at.
+    
+    Returns a Decoding Stream object to (progressively) read values with.
+    
+    Usage:
+    >>> stream = compaqt.StreamDecoder('myFolder/myFile.ext')
+    """
+    
+    def __init__(self, file_name: str, chunk_size: int=1024*1024*8, file_offset: int=0) -> self:
+        self.start_offset: int = ...
+        self.curr_offset: int = ...
+        self.items_remaining: int = ...
+        ...
+    
+    def read(self, num_items: int=..., clear_memory: bool=False, chunk_size: int=...) -> None:
+        """Decode values from a decoding stream.
+        
+        Args:
+        - `num_items`:     The number of items to decode. Defaults to all items. Does not throw an error if this value exceeds the number of items. Instead, we can see if the decoder is 'exhausted' with `stream.exhausted`.
+        - `clear_memory`:  Whether to clear the allocated memory chunk after serializing instead of preserving it for the next call.
+        - `chunk_size`:    Set the chunk size of the memory chunk. Defaults to the currently set value.
+        
+        Usage:
+        >>> values = stream.read()
+        """
+        ...
+    
+    def finalize(self) -> None:
+        """Finalize a stream decoder by freeing its internal buffer and invalidating the Stream Decoder object.
+        
+        Usage:
+        >>> stream.finalize()
+        """
+        ...
+
 
 class settings:
-    """
-    Control aspects of the serializer during runtime.
+    """Control aspects of the serializer during runtime.
     """
     
     def manual_allocations(item_size: int, realloc_size: int) -> None:
@@ -122,4 +165,4 @@ class settings:
         >>> compaqt.settings.dynamic_allocations(item_size=32, realloc_size=64)
         """
         ...
-    
+

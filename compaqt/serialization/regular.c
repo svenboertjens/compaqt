@@ -3,596 +3,270 @@
 #include "regular.h"
 
 #include <Python.h>
-#include "globals.h"
+#include "metadata.h"
+#include "serialization.h"
 
 /* ENCODING */
 
-// Reallocate the message buffer by a set amount
-#define REALLOC_MSG(new_length) do { \
-    char *tmp = (char *)realloc(b->msg, new_length); \
-    if (tmp == NULL) \
-    { \
-        PyErr_NoMemory(); \
-        return 1; \
-    } \
-    b->allocated = new_length; \
-    b->msg = tmp; \
-} while (0)
+typedef struct {
+    char *msg;
+    size_t offset;
+    size_t allocated;
+    int reallocs;
+} encode_t;
 
-// Ensure there's enough space allocated to write
-#define OFFSET_CHECK(length) do { \
-    if (b->offset + length > b->allocated) \
-    { \
-        REALLOC_MSG(b->offset + length + avg_realloc_size); \
-        b->reallocs++; \
-    } \
-} while (0)
-
-// Check datatype for a container item
-#define DT_CHECK(expected) do { \
-    if (type != &expected) \
-    { \
-        PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name); \
-        return 1; \
-    } \
-} while (0)
-
-// Encode an item from a container type
-static inline int encode_container_item(buffer_t *b, PyObject *item)
+static inline int offset_check(buffer_t *b, const size_t length)
 {
-    PyTypeObject *type = Py_TYPE(item);
-    const char *tp_name = type->tp_name;
+    if (b->offset + length > b->allocated)
+    {
+        ((encode_t *)(b))->reallocs++;
 
-    switch (*tp_name)
-    {
-    case 'b': // Bytes / Boolean
-    {
-        if (tp_name[1] == 'y') // Bytes
+        const size_t new_length = b->offset + length + avg_realloc_size;
+
+        char *tmp = (char *)realloc(b->msg, new_length);
+        if (tmp == NULL)
         {
-            DT_CHECK(PyBytes_Type);
-
-            const size_t length = bytes_ln(item);
-
-            OFFSET_CHECK(length + MAX_VLE_METADATA_SIZE);
-            WR_METADATA_VLE(b, DT_BYTES, length);
-
-            bytes_wr(b, item, length);
+            PyErr_NoMemory();
+            return 0;
         }
-        else // Boolean
-        {
-            OFFSET_CHECK(1);
-            bool_wr(b, item);
-        }
-        break;
-    }
-    case 's': // String
-    {
-        DT_CHECK(PyUnicode_Type);
-
-        const size_t length = string_ln(item);
-
-        OFFSET_CHECK(length + MAX_VLE_METADATA_SIZE);
-        WR_METADATA_VLE(b, DT_STRNG, length);
-
-        string_wr(b, item, length);
-        break;
-    }
-    case 'i': // Integer
-    {
-        DT_CHECK(PyLong_Type);
-
-        const size_t length = integer_ln(item);
-
-        OFFSET_CHECK(length + MAX_VLE_METADATA_SIZE);
-        WR_METADATA_VLE(b, DT_INTGR, length);
-
-        integer_wr(b, item, length);
-        break;
-    }
-    case 'f': // Float
-    {
-        DT_CHECK(PyFloat_Type);
-        OFFSET_CHECK(9);
-
-        *(b->msg + b->offset++) = DT_FLOAT;
-
-        float_wr(b, item);
-        break;
-    }
-    case 'c': // Complex
-    {
-        DT_CHECK(PyComplex_Type);
-        OFFSET_CHECK(17);
-
-        *(b->msg + b->offset++) = DT_CMPLX;
-
-        complex_wr(b, item);
-        break;
-    }
-    case 'N': // NoneType
-    {
-        *(b->msg + b->offset++) = DT_NONTP;
-        break;
-    }
-    case 'l': // List
-    {
-        DT_CHECK(PyList_Type);
-
-        const size_t num_items = (size_t)(PyList_GET_SIZE(item));
-        WR_METADATA_VLE(b, DT_ARRAY, num_items);
-
-        for (size_t i = 0; i < num_items; ++i)
-            if (encode_container_item(b, PyList_GET_ITEM(item, i)) == 1) return 1;
-        
-        break;
-    }
-    case 'd': // Dict
-    {
-        DT_CHECK(PyDict_Type);
-        WR_METADATA_VLE(b, DT_DICTN, PyDict_GET_SIZE(item));
-
-        Py_ssize_t pos = 0;
-        PyObject *key, *val;
-        while (PyDict_Next(item, &pos, &key, &val))
-        {
-            if (encode_container_item(b, key) == 1)
-            {
-                Py_DECREF(key);
-                return 1;
-            }
-            Py_DECREF(key);
-
-            if (encode_container_item(b, val) == 1)
-            {
-                Py_DECREF(val);
-                return 1;
-            }
-            Py_DECREF(val);
-        }
-        break;
-    }
-    default: // Unsupported datatype
-    {
-        PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name);
-        return 1;
-    }
+        b->allocated = new_length;
+        b->msg = tmp;
     }
 
     return 0;
 }
 
-// Encode a list type
-static inline PyObject *encode_list(buffer_t *b, PyObject *value)
+PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-    if (!PyList_Check(value))
-    {
-        PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", Py_TYPE(value)->tp_name);
+    PyObject *value;
+    char *filename = NULL;
+
+    static char *kwlist[] = {"value", "filename", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|s", kwlist, &value, &filename))
         return NULL;
-    }
-
-    size_t num_items = PyList_GET_SIZE(value);
-    if (num_items == 0)
-    {
-        char buf = DT_ARRAY;
-        return PyBytes_FromStringAndSize(&buf, 1);
-    }
-
-    const size_t initial_allocated = (avg_item_size * num_items) + avg_realloc_size;
     
-    b->msg = (char *)malloc(initial_allocated);
-    if (b->msg == NULL)
-    {
-        PyErr_NoMemory();
-        return NULL;
-    }
+    encode_t b;
 
-    b->allocated = initial_allocated;
-
-    WR_METADATA_VLE(b, DT_ARRAY, num_items);
-
-    for (size_t i = 0; i < num_items; ++i)
-    {
-        if (encode_container_item(b, PyList_GET_ITEM(value, i)) == 1)
-        {
-            free(b->msg);
-            return NULL;
-        }
-    }
-    
-    update_allocation_settings(b->reallocs, b->offset, initial_allocated, num_items);
-
-    PyObject *result = PyBytes_FromStringAndSize(b->msg, b->offset);
-
-    free(b->msg);
-    return result;
-}
-
-// Set up encoding basis for a dict type
-static inline PyObject *encode_dict(buffer_t *b, PyObject *value)
-{
-    if (!PyDict_Check(value))
-    {
-        PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", Py_TYPE(value)->tp_name);
-        return NULL;
-    }
-
-    size_t num_items = (size_t)(PyDict_GET_SIZE(value));
-    if (num_items == 0)
-    {
-        char buf = DT_DICTN;
-        return PyBytes_FromStringAndSize(&buf, 1);
-    }
-
-    const size_t initial_allocated = (avg_item_size * (num_items * 2)) + avg_realloc_size;
-    
-    b->msg = (char *)malloc(initial_allocated);
-    if (b->msg == NULL)
-    {
-        PyErr_NoMemory();
-        return NULL;
-    }
-
-    b->allocated = initial_allocated;
-
-    WR_METADATA_VLE(b, DT_DICTN, num_items);
-
-    Py_ssize_t pos = 0;
-    PyObject *key, *val;
-    while (PyDict_Next(value, &pos, &key, &val))
-    {
-        if (encode_container_item(b, key) == 1 || encode_container_item(b, val) == 1)
-        {
-            free(b->msg);
-            return NULL;
-        }
-    }
-    
-    update_allocation_settings(b->reallocs, b->offset, initial_allocated, num_items * 2);
-
-    PyObject *result = PyBytes_FromStringAndSize(b->msg, b->offset);
-
-    free(b->msg);
-    return result;
-}
-
-// Encode and return a single non-container value
-#define ENCODE_SINGLE_VALUE(expected, dt_mask, DT_LN, DT_WR) do { \
-    if (type != &expected) \
-    { \
-        PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name); \
-        return NULL; \
-    } \
-    \
-    const size_t length = DT_LN(value); \
-    \
-    b.msg = (char *)malloc(length + 1); \
-    if (b.msg == NULL) \
-    { \
-        PyErr_NoMemory(); \
-        return NULL; \
-    } \
-    \
-    b.offset = 1; \
-    DT_WR((&b), value, length); \
-    *(b.msg) = dt_mask; \
-    \
-    PyObject *result = PyBytes_FromStringAndSize(b.msg, length + 1); \
-    \
-    free(b.msg); \
-    return result; \
-} while (0)
-
-PyObject *encode_regular(PyObject *value)
-{
-    buffer_t b;
     b.offset = 0;
+    b.msg = (char *)malloc(avg_realloc_size);
+    b.allocated = avg_realloc_size;
     b.reallocs = 0;
 
-    PyTypeObject *type = Py_TYPE(value);
-    const char *tp_name = type->tp_name;
+    if (b.msg == NULL)
+    {
+        PyErr_NoMemory();
+        return NULL;
+    }
 
-    switch (*tp_name)
+    // Encode the value
+    if (encode_item((buffer_t *)(&b), value, offset_check) == 1)
     {
-    case 'b': // Bytes / Boolean
+        free(b.msg);
+        return NULL;
+    }
+
+    // See if we should write to a file
+    if (filename != NULL)
     {
-        if (tp_name[1] == 'y') // Bytes
-            ENCODE_SINGLE_VALUE(PyBytes_Type, DT_BYTES, bytes_ln, bytes_wr);
-        else // Boolean
+        FILE *file = fopen(filename, "wb");
+
+        if (file == NULL)
         {
-            char buf = DT_BOOLF | (!!(value == Py_True) << 3);
-            return PyBytes_FromStringAndSize(&buf, 1);
+            PyErr_Format(PyExc_FileNotFoundError, "Unable to open/create file '%s'", filename);
+            free(b.msg);
+            return NULL;
         }
-    }
-    case 's': // String
-        ENCODE_SINGLE_VALUE(PyUnicode_Type, DT_STRNG, string_ln, string_wr);
-    case 'i': // Integer
-        ENCODE_SINGLE_VALUE(PyLong_Type, DT_INTGR, integer_ln, integer_wr);
-    case 'f': // Float
-    {
-        if (type != &PyFloat_Type) break;
 
-        char buf[9];
-        buf[0] = DT_FLOAT;
-
-        #if (STRICT_ALIGNMENT == 0)
-
-            *(double *)(buf + 1) = PyFloat_AS_DOUBLE(value);
-
-        #else
-
-            const double num = PyFloat_AS_DOUBLE(value);
-            memcpy(buf + 1, &num, 8);
-
-        #endif
-
-        return PyBytes_FromStringAndSize(buf, 9);
-    }
-    case 'c': // Complex
-    {
-        if (type != &PyComplex_Type) break;
-
-        char buf[17];
-        buf[0] = DT_CMPLX;
-
-        #if (STRICT_ALIGNMENT == 0)
-
-            *(Py_complex *)(buf + 1) = PyComplex_AsCComplex(value);
-
-        #else
-
-            const Py_complex complex = PyComplex_AsCComplex(value);
-            memcpy(buf + 1, &complex, 16);
-
-        #endif
-
-        return PyBytes_FromStringAndSize(buf, 17);
-    }
-    case 'N': // NoneType
-    {
-        if (value != Py_None) break;
-        char buf = DT_NONTP;
-        return PyBytes_FromStringAndSize(&buf, 1);
-    }
-    case 'l': // List
-        return encode_list(&b, value);
-    case 'd': // Dict
-        return encode_dict(&b, value);
+        fwrite(b.msg, 1, b.offset, file);
+        fclose(file);
+        
+        free(b.msg);
+        Py_RETURN_NONE;
     }
 
-    PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name);
-    return NULL;
+    // Otherwise return as a Python bytes object
+    PyObject *result = PyBytes_FromStringAndSize(b.msg, b.offset);
+    
+    free(b.msg);
+    return result;
 }
 
 /* DECODING */
 
-// Set an error stating we received an invalid input
-#define SET_INVALID_ERR() (PyErr_SetString(PyExc_ValueError, "Received an invalid or corrupted bytes string"))
-
-// Check whether we aren't overreading the buffer (means invalid input)
-#define OVERREAD_CHECK(length) do { \
-    if (b->offset + length > b->allocated) \
-    { \
-        SET_INVALID_ERR(); \
-        return NULL; \
-    } \
-} while (0)
-
-// Decode a single item
-#define DECODE_ITEM(rd_func) do { \
-    size_t length = 0; \
-    RD_METADATA_VLE(b, length); \
-    OVERREAD_CHECK(length); \
-    PyObject *value; \
-    rd_func(b, value, length); \
-    return value; \
-} while (0)
-
-// Decode an item inside a container
-static PyObject *decode_container_item(buffer_t *b)
+static inline int overread_check(buffer_t *b, const size_t length)
 {
-    const char dt_mask = RD_DTMASK(b);
-
-    switch (dt_mask)
+    if (b->offset + length > b->allocated)
     {
-    case DT_BYTES: DECODE_ITEM(bytes_rd);
-    case DT_STRNG: DECODE_ITEM(string_rd);
-    case DT_INTGR: DECODE_ITEM(integer_rd);
-    case DT_GROUP:
-    {
-        const char act_mask = RD_DTMASK_GROUP(b);
-        OVERREAD_CHECK(0);
-
-        switch (act_mask)
-        {
-        case DT_FLOAT:
-        {
-            OVERREAD_CHECK(8);
-            PyObject *value;
-            float_rd(b, value);
-            return value;
-        }
-        case DT_CMPLX:
-        {
-            OVERREAD_CHECK(16);
-            PyObject *value;
-            complex_rd(b, value);
-            return value;
-        }
-        case DT_BOOLT: Py_RETURN_TRUE;
-        case DT_BOOLF: Py_RETURN_FALSE;
-        case DT_NONTP: Py_RETURN_NONE;
-        }
-    }
-    case DT_ARRAY:
-    {
-        size_t num_items = 0;
-        RD_METADATA_VLE(b, num_items);
-        OVERREAD_CHECK(0);
-
-        PyObject *list = PyList_New(num_items);
-
-        if (list == NULL)
-        {
-            PyErr_Format(PyExc_RuntimeError, "Failed to create a list object of size '%zu'", num_items);
-            return NULL;
-        }
-
-        // Decode all items and append to the list
-        for (size_t i = 0; i < num_items; ++i)
-        {
-            PyObject *item = decode_container_item(b);
-
-            if (item == NULL)
-            {
-                Py_DECREF(list);
-                return NULL;
-            }
-
-            PyList_SET_ITEM(list, i, item);
-        }
-
-        return list;
-    }
-    case DT_DICTN:
-    {
-        size_t num_items = 0;
-        RD_METADATA_VLE(b, num_items);
-        OVERREAD_CHECK(0);
-
-        PyObject *dict = PyDict_New();
-
-        if (dict == NULL)
-        {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to create a dict object");
-            return NULL;
-        }
-
-        // Go over the dict and decode all items, place them into the dict
-        for (size_t i = 0; i < num_items; ++i)
-        {
-            PyObject *key, *val;
-
-            if ((key = decode_container_item(b)) == NULL || (val = decode_container_item(b)) == NULL)
-            {
-                Py_DECREF(dict);
-                return NULL;
-            }
-
-            PyDict_SetItem(dict, key, val);
-        }
-
-        return dict;
-    }
+        PyErr_SetString(PyExc_ValueError, "Received an invalid or corrupted bytes string");
+        return 1;
     }
 
-    // Invalid input received
-    SET_INVALID_ERR();
-    return NULL;
+    return 0;
 }
 
-PyObject *decode_regular(PyObject *value)
+PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-    buffer_t b_local;
-    buffer_t *b = &b_local;
+    PyObject *value = NULL;
+    char *filename = NULL;
 
-    PyBytes_AsStringAndSize(value, &b->msg, (Py_ssize_t *)(&b->allocated));
+    static char *kwlist[] = {"value", "filename", NULL};
 
-    if (b->allocated == 0)
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|O!s", kwlist, &PyBytes_Type, &value, &filename))
+        return NULL;
+    
+    buffer_t b;
+
+    // Read from the value if one is given
+    if (value != NULL)
     {
-        SET_INVALID_ERR();
+        PyBytes_AsStringAndSize(value, &b.msg, (Py_ssize_t *)&b.allocated);
+
+        if (b.allocated == 0)
+        {
+            PyErr_SetString(PyExc_ValueError, "Received an invalid or corrupted bytes string");
+            return NULL;
+        }
+    }
+    else if (filename != NULL)
+    {
+        // Otherwise read from the file if given
+        FILE *file = fopen(filename, "rb");
+
+        if (file == NULL)
+        {
+            PyErr_Format(PyExc_FileNotFoundError, "Cannot open file '%s'", filename);
+            return NULL;
+        }
+
+        // Get the length of the file
+        if (fseek(file, 0, SEEK_END) != 0)
+        {
+            PyErr_Format(PyExc_FileNotFoundError, "Unable to find the end of file '%s'", filename);
+            fclose(file);
+            return NULL;
+        }
+
+        // The amount to allocate is the size of the file
+        b.allocated = ftell(file);
+
+        b.msg = (char *)malloc(b.allocated);
+        if (b.msg == NULL)
+        {
+            PyErr_NoMemory();
+            fclose(file);
+            return NULL;
+        }
+
+        // Go back to the start of the file to read its contents
+        if (fseek(file, 0, SEEK_SET) != 0)
+        {
+            PyErr_Format(PyExc_FileNotFoundError, "Unable to find the start of file '%s'", filename);
+            fclose(file);
+            return NULL;
+        }
+
+        // Copy the file content into the allocated message buffer
+        fread(b.msg, 1, b.allocated, file);
+        fclose(file);
+    }
+    else
+    {
+        PyErr_SetString(PyExc_ValueError, "Expected either the 'value' or 'filename' argument, got neither");
         return NULL;
     }
 
-    PyObject *result;
+    b.offset = 0;
 
-    switch (*(b->msg) & 0b00000111)
-    {
-    case DT_BYTES: b->offset = 1; bytes_rd(b, result, b->allocated - 1); break;
-    case DT_STRNG: b->offset = 1; string_rd(b, result, b->allocated - 1); break;
-    case DT_INTGR: b->offset = 1; integer_rd(b, result, b->allocated - 1); break;
-    case DT_GROUP:
-    {
-        b->offset = 1;
+    return decode_item(&b, overread_check);
+}
 
-        switch (*(b->msg))
+/* VALIDATION */
+
+#define VALIDATE_OVERREAD_CHECK(length) do { \
+    if (b->offset + length > b->allocated) return 1; \
+} while (0)
+
+static inline int _validate(buffer_t *b)
+{
+    VALIDATE_OVERREAD_CHECK(1);
+
+    switch (RD_DTMASK(b))
+    {
+    case DT_GROUP: // Group datatypes
+    {
+        switch (RD_DTMASK_GROUP(b))
         {
-        case DT_FLOAT: OVERREAD_CHECK(8); float_rd(b, result); break;
-        case DT_CMPLX: OVERREAD_CHECK(16); complex_rd(b, result); break;
-        case DT_BOOLT: Py_RETURN_TRUE;
-        case DT_BOOLF: Py_RETURN_FALSE;
-        case DT_NONTP: Py_RETURN_NONE;
-        default: SET_INVALID_ERR(); return NULL;
+        // Static lengths, no metadata to read, already incremented by `RD_DTMASK_GROUP`
+        case DT_FLOAT: VALIDATE_OVERREAD_CHECK(8);  b->offset += 8;  return 0;
+        case DT_CMPLX: VALIDATE_OVERREAD_CHECK(16); b->offset += 16; return 0;
+        case DT_BOOLF: // Boolean and NoneType values don't have more bytes, nothing to increment
+        case DT_BOOLT:
+        case DT_NONTP: return 0;
+        default: return 1;
         }
     }
     case DT_ARRAY:
     {
-        b->offset = 0;
-
         size_t num_items = 0;
-        RD_METADATA_VLE(b, num_items);
-        OVERREAD_CHECK(0); // Check whether reading the metadata didn't exceed the allocation size
+        RD_METADATA(b->msg, b->offset, num_items);
+        VALIDATE_OVERREAD_CHECK(0); // Check whether the metadata reading didn't cross the boundary
 
-        result = PyList_New(num_items);
-
-        if (result == NULL)
-        {
-            PyErr_Format(PyExc_RuntimeError, "Failed to create a list object of size '%zu'", num_items);
-            return NULL;
-        }
-
-        PyObject *item;
         for (size_t i = 0; i < num_items; ++i)
-        {
-            if ((item = decode_container_item(b)) == NULL)
-            {
-                Py_DECREF(result);
-                return NULL;
-            }
-
-            PyList_SET_ITEM(result, i, item);
-        }
-
-        break;
+            if (_validate(b) == 1) return 1;
+        
+        return 0;
     }
     case DT_DICTN:
     {
-        b->offset = 0;
-
         size_t num_items = 0;
-        RD_METADATA_VLE(b, num_items);
-        OVERREAD_CHECK(0);
+        RD_METADATA(b->msg, b->offset, num_items);
+        VALIDATE_OVERREAD_CHECK(0);
 
-        result = PyDict_New();
-
-        if (result == NULL)
-        {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to create a dict object");
-            return NULL;
-        }
-
-        for (size_t i = 0; i < num_items; ++i)
-        {
-            PyObject *key, *val;
-
-            if ((key = decode_container_item(b)) == NULL || (val = decode_container_item(b)) == NULL)
-            {
-                Py_DECREF(result);
-                return NULL;
-            }
-
-            PyDict_SetItem(result, key, val);
-        }
-
-        break;
+        for (size_t i = 0; i < (num_items * 2); ++i)
+            if (_validate(b) == 1) return 1;
+        
+        return 0;
     }
+    case DT_EXTND:
+    case DT_NOUSE: return 1; // Not supported yet, so currently means invalid
     default:
     {
-        // Invalid input
-        SET_INVALID_ERR();
+        // All other cases use VLE metadata, so read length and increment offset using it
+        size_t length = 0;
+        RD_METADATA(b->msg, b->offset, length);
+        VALIDATE_OVERREAD_CHECK(length);
+        b->offset += length;
+        return 0;
+    }
+    }
+}
+
+PyObject *validate(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *value;
+    int err_on_invalid = 0;
+
+    static char *kwlist[] = {"value", "error_on_invalid", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O!|i", kwlist, &PyBytes_Type, &value, &err_on_invalid))
+        return NULL;
+
+    buffer_t b;
+    b.offset = 0;
+
+    PyBytes_AsStringAndSize(value, &b.msg, (Py_ssize_t *)&b.allocated);
+
+    const int result = _validate(&b);
+
+    if (result == 0)
+        Py_RETURN_TRUE;
+    else if (err_on_invalid == 0)
+        Py_RETURN_FALSE;
+    else
+    {
+        PyErr_SetString(PyExc_ValueError, "The received object does not appear to be valid");
         return NULL;
     }
-    }
-
-    return result;
 }
 

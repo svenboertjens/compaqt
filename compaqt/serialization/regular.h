@@ -2,9 +2,11 @@
 #define REGULAR_H
 
 #include <Python.h>
-#include "globals.h"
+#include "metadata.h"
+#include "serialization.h"
 
-PyObject *encode_regular(PyObject *value);
-PyObject *decode_regular(PyObject *value);
+PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs);
+PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs);
+PyObject *validate(PyObject *self, PyObject *args, PyObject *kwargs);
 
 #endif // REGULAR_H

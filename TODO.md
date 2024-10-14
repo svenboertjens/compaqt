@@ -12,7 +12,7 @@ Known bugs that are being worked on:
 ## Features
 
 The following features are being worked on:
-- New serialization methods/options (write to a file, chunk processing).
+- Streaming to/from files.
 
 
 ## Ideas

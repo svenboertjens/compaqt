@@ -7,34 +7,28 @@ import os
 
 macros = []
 
-if sys.byteorder != "little" and not os.environ.get("IGNORE_ENDIANNESS"):
+if sys.byteorder != "little" and not os.environ.get("SET_LITTLE_ENDIAN"):
     macros.append(("IS_LITTLE_ENDIAN", 0))
 
-if os.environ.get("FORCE_STRICT_ALIGNMENT") or platform.system().lower() == "linux" and platform.machine().lower().startswith("arm"):
+if os.environ.get("SET_STRICT_ALIGNMENT") or platform.machine().strip(' _').lower().startswith("arm"):
     macros.append(("STRICT_ALIGNMENT", 1))
-
-class CustomBuildExt(build_ext):
-    def build_extensions(self):
-        for ext in self.extensions:
-            if self.compiler.compiler_type == 'msvc':
-                ext.extra_compile_args = ['/O2']
-            elif self.compiler.compiler_type == 'unix':
-                ext.extra_compile_args = ['-O3', '-march=native']
-        super().build_extensions()
 
 ext_modules = [
     Extension(
         'compaqt.compaqt',
         sources=[
             'compaqt/compaqt.c',
-            'compaqt/globals.c',
+            'compaqt/metadata.c',
+            'compaqt/serialization/serialization.c',
             'compaqt/serialization/regular.c',
             'compaqt/serialization/stream.c',
+            'compaqt/settings/allocations.c'
         ],
         include_dirs=[
             '.',
             'compaqt/',
-            'compaqt/serialization/'
+            'compaqt/serialization/',
+            'compaqt/settings/'
         ],
         define_macros=macros
     ),
@@ -42,7 +36,7 @@ ext_modules = [
 
 setup(
     name="compaqt",
-    version="0.3.2",
+    version="0.4.0",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",
@@ -63,12 +57,10 @@ setup(
     },
     include_package_data=True,
     
-    cmdclass={'build_ext': CustomBuildExt},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
     ],
-    license='BSD-3-Clause',
-    python_requires='>=3.6, <3.13'
+    license='BSD-3-Clause'
 )

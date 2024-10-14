@@ -4,9 +4,6 @@
 #include "metadata.h"
 #include "serialization.h"
 
-// Use a max of 8 MB per chunk by default
-#define CHUNK_SIZE_DEFAULT (1024 * 1024 * 8)
-
 // Stream object class
 typedef struct {
     char *msg;
@@ -275,7 +272,7 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     char *filename;
     PyTypeObject *value_type = &PyList_Type;
-    size_t chunk_size = CHUNK_SIZE_DEFAULT;
+    size_t chunk_size = DEFAULT_CHUNK_SIZE;
     int resume_stream = 0;
     int preserve_file = 0;
     size_t stream_offset = 0;
@@ -702,7 +699,7 @@ PyTypeObject PyStreamDecoderType = {
 PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     char *filename;
-    size_t chunk_size = CHUNK_SIZE_DEFAULT;
+    size_t chunk_size = DEFAULT_CHUNK_SIZE;
     size_t stream_offset = 0;
 
     static char *kwlist[] = {"file_name", "chunk_size", "file_offset", NULL};
@@ -800,20 +797,5 @@ PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
     stream_obj->s = s;
 
     return (PyObject *)stream_obj;
-}
-
-/* VALIDATION */
-
-PyObject *validate_stream(PyObject *self, PyObject *args, PyObject *kwargs)
-{
-    char *filename;
-    int err_on_invalid = 0;
-
-    static char *kwlist[] = {"filename", "error_on_invalid", NULL};
-
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|i", kwlist, &filename, &err_on_invalid))
-        return NULL;
-    
-    return NULL;
 }
 

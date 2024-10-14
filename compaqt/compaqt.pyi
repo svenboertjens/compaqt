@@ -1,14 +1,13 @@
 # compaqt.pyi
-
-import typing
-
-def encode(value: any) -> bytes:
+    
+def encode(value: any, filename: str=None) -> None:
     """Encode a value to bytes.
     
     Args:
-    - `value`:  The value to encode.
+    - `value`:     The value to encode.
+    - `filename`:  The file to write encoded data to. By default doesn't write to a file and returns the bytes as a value.
     
-    Returns the value encoded to bytes.
+    Returns the value encoded to bytes (if not writing to a file).
     
     Usage:
     >>> encoded = compaqt.encode(any_value)
@@ -26,11 +25,12 @@ def encode(value: any) -> bytes:
     """
     ...
 
-def decode(encoded: bytes) -> any:
+def decode(encoded: bytes=None, filename: str=None) -> any:
     """Decode an encoded bytes object back to the original value.
     
     Args:
-    - `encoded`:  The encoded value to decode.
+    - `encoded`:   The encoded value to decode. Overrides `filename`.
+    - `filename`:  The file to read the data from. Can be given INSTEAD of `encoded`.
     
     Returns the decoded value.
     
@@ -39,12 +39,15 @@ def decode(encoded: bytes) -> any:
     """
     ...
 
-def validate(encoded: bytes, error_on_invalid: bool=False) -> bool:
-    """Validate whether an encoded bytes object is valid
+def validate(encoded: bytes=None, filename: str=None, file_offset: int=0, chunk_size: int=0, err_on_invalid: bool=False) -> bool:
+    """Validate whether encoded bytes object are valid
     
     Args:
-    - `encoded`:           The encoded value to validate.
-    - `error_on_invalid`:  Whether to throw an error if the the value is invalid.
+    - `encoded`:         The encoded value to validate. Overrides `filename`.
+    - `filename`:        The path to the file to read the data from. Can be given INSTEAD of `encoded`.
+    - `file_offset`:     The offset in the file to start reading from.
+    - `chunk_size`:      The size of the internal buffer to process data in. Zero means the size of the file (starting from the file offset).
+    - `err_on_invalid`:  Whether to throw an error if the the value is invalid.
     
     Returns a boolean on whether the encoded object is valid.
     
@@ -70,7 +73,7 @@ class StreamEncoder:
     >>> stream = compaqt.StreamEncoder('myFolder/myFile.ext', list)
     """
     
-    def __init__(self, file_name: str, value_type: type=..., chunk_size: int=1024*1024*8, resume_stream: bool=False, file_offset: int=0, preserve_file: bool=False) -> self:
+    def __init__(self, file_name: str, value_type: type=..., chunk_size: int=1024*256, resume_stream: bool=False, file_offset: int=0, preserve_file: bool=False) -> self:
         self.start_offset: int = ...
         self.curr_offset: int = ...
         ...
@@ -110,7 +113,7 @@ class StreamDecoder:
     >>> stream = compaqt.StreamDecoder('myFolder/myFile.ext')
     """
     
-    def __init__(self, file_name: str, chunk_size: int=1024*1024*8, file_offset: int=0) -> self:
+    def __init__(self, file_name: str, chunk_size: int=1024*256, file_offset: int=0) -> self:
         self.start_offset: int = ...
         self.curr_offset: int = ...
         self.items_remaining: int = ...

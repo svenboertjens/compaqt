@@ -9,6 +9,9 @@
 #define IS_LITTLE_ENDIAN 1 // Whether the system is little-endian
 #define STRICT_ALIGNMENT 0 // Whether to use strict alignment
 
+// Default chunk size is 256KB
+#define DEFAULT_CHUNK_SIZE 1024*256
+
 /* ENDIANNESS */
 
 // Convert values to little-endian format

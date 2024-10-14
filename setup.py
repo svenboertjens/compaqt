@@ -19,16 +19,21 @@ ext_modules = [
         sources=[
             'compaqt/compaqt.c',
             'compaqt/metadata.c',
+            
             'compaqt/serialization/serialization.c',
             'compaqt/serialization/regular.c',
             'compaqt/serialization/stream.c',
-            'compaqt/settings/allocations.c'
+            
+            'compaqt/settings/allocations.c',
+            
+            'compaqt/misc/validation.c',
         ],
         include_dirs=[
             '.',
             'compaqt/',
             'compaqt/serialization/',
-            'compaqt/settings/'
+            'compaqt/settings/',
+            'compaqt/misc/'
         ],
         define_macros=macros
     ),
@@ -53,7 +58,7 @@ setup(
     
     ext_modules=ext_modules,
     package_data={
-        'compaqt': ['*.pyi', 'serialization/*']
+        'compaqt': ['*.pyi']
     },
     include_package_data=True,
     

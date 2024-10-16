@@ -3,7 +3,7 @@
 All changes to the `compaqt` module are documented here.
 
 
-## [0.4.1] - 2024-10-13
+## [0.4.1] - 2024-10-16
 
 ### Fixes:
 - Fix support for UTF-8 (previously only worked with ASCII);

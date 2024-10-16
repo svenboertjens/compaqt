@@ -64,8 +64,8 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
         size_t length;
         const char *bytes = string_ln(item, length);
 
-        OFFSET_CHECK(length);
         WR_METADATA(b->msg, b->offset, DT_STRNG, length);
+        OFFSET_CHECK(length);
 
         string_wr(b, bytes, length);
         break;
@@ -259,7 +259,6 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
             return NULL;
         }
 
-        // Go over the dict and decode all items, place them into the dict
         for (size_t i = 0; i < num_items; ++i)
         {
             PyObject *key = decode_item(b, overread_check);

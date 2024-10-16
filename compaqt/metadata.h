@@ -150,21 +150,24 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
     } \
 } while (0)
 
-// Read metadata
 #define RD_METADATA(msg, offset, length) do { \
-    const int first = *((msg) + offset); \
-    if ((first & 0b00001000) == 0) \
-        (length) = (*((msg) + offset++) & 0xFF) >> 4; \
-    else if ((first & 0b00010000) == 0) \
+    switch (*((msg) + offset) & 0b00011000) \
+    { \
+    case 0b00010000: \
+    case 0b00000000: \
+        (length) = (*((msg) + offset++) & 0xFF) >> 4; break; \
+    case 0b00001000: \
     { \
         (length)  = (*((msg) + offset++) & 0xFF) >> 5; \
         (length) |= (*((msg) + offset++) & 0xFF) << 3; \
+        break; \
     } \
-    else \
+    default: \
     { \
         const int num_bytes = (*((msg) + offset++) & 0b11100000) >> 5; \
         RD_METADATA_LM2(msg, offset, length, num_bytes); \
         break; \
+    } \
     } \
 } while (0)
 
@@ -189,8 +192,8 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
 #define DT_NONTP DT_GROUP | (unsigned char)(3 << 3) // NoneTypes
 #define DT_CMPLX DT_GROUP | (unsigned char)(4 << 3) // Complexes
 
-#define DT_NOUSE (unsigned char)(6) // Not yet used for anything, suggestions?
-#define DT_EXTND (unsigned char)(7) // Custom datatypes
+#define DT_NOUSE (unsigned char)(6) // Not used by anything yet
+#define DT_EXTND (unsigned char)(7) // Custom datatypes (not implemented yet)
 
 /* DATATYPE CONVERSION */
 

@@ -93,7 +93,7 @@ static PyObject *update_encoder(PyStreamEncoderObject *stream_obj, PyObject *arg
     PyObject *value;
     int clear_memory = 0;
     Py_ssize_t chunk_size = 0;
-
+    
     static char *kwlist[] = {"value", "clear_memory", "chunk_size", NULL};
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|in", kwlist, &value, &clear_memory, &chunk_size))
@@ -233,7 +233,7 @@ static void encoder_dealloc(PyStreamEncoderObject *stream_obj)
         PyObject_Del(stream_obj);
 }
 
-static PyObject *offset_encoder(PyStreamEncoderObject *stream_obj)
+static PyObject *start_offset_encoder(PyStreamEncoderObject *stream_obj)
 {
     stream_t *s = stream_obj->s;
 
@@ -246,8 +246,22 @@ static PyObject *offset_encoder(PyStreamEncoderObject *stream_obj)
     return PyLong_FromUnsignedLongLong(s->stream_offset);
 }
 
+static PyObject *total_offset_encoder(PyStreamEncoderObject *stream_obj)
+{
+    stream_t *s = stream_obj->s;
+
+    if (s == NULL)
+    {
+        PyErr_SetString(PyExc_ValueError, "Received an invalid StreamDecoder object");
+        return NULL;
+    }
+
+    return PyLong_FromUnsignedLongLong(s->offset);
+}
+
 static PyGetSetDef PyStreamEncoderGetSet[] = {
-    {"offset", (getter)offset_encoder, NULL, "The file offset data is being written to", NULL},
+    {"start_offset", (getter)start_offset_encoder, NULL, "The initial file offset the encoder started writing to", NULL},
+    {"total_offset", (getter)total_offset_encoder, NULL, "The total file offset the encoder is currently at", NULL},
     {NULL, NULL, NULL, NULL, NULL}
 };
 
@@ -674,15 +688,29 @@ static PyObject *items_remaining_decoder(PyStreamDecoderObject *stream_obj, void
     return PyLong_FromUnsignedLongLong(s->num_items);
 }
 
+static PyObject *total_offset_decoder(PyStreamEncoderObject *stream_obj)
+{
+    stream_t *s = stream_obj->s;
+
+    if (s == NULL)
+    {
+        PyErr_SetString(PyExc_ValueError, "Received an invalid StreamDecoder object");
+        return NULL;
+    }
+
+    return PyLong_FromUnsignedLongLong(s->offset);
+}
+
+static PyGetSetDef PyStreamDecoderGetSet[] = {
+    {"total_offset", (getter)total_offset_decoder, NULL, "The total file offset the encoder is currently at", NULL},
+    {"items_remaining", (getter)items_remaining_decoder, NULL, "The amount of items remaining to be read", NULL},
+    {NULL, NULL, NULL, NULL, NULL}
+};
+
 static PyMethodDef PyStreamDecoderMethods[] = {
     {"read", (PyCFunction)update_decoder, METH_VARARGS | METH_KEYWORDS, "De-serialize data from the stream decoder"},
     {"finalize", (PyCFunction)finalize_decoder, METH_NOARGS, "Finalize the stream decoder and clean it up"},
     {NULL, NULL, 0, NULL}
-};
-
-static PyGetSetDef PyStreamDecoderGetSet[] = {
-    {"items_remaining", (getter)items_remaining_decoder, NULL, "The amount of items remaining to be read", NULL},
-    {NULL, NULL, NULL, NULL, NULL}
 };
 
 PyTypeObject PyStreamDecoderType = {

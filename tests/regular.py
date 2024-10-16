@@ -25,8 +25,26 @@ def test(v: any) -> None:
     except Exception as e:
         print(f'Error: {e}\nFor value: {shorten(v)}\n')
 
+# Test all values regularly
 for v in test_values:
     test(v)
 
+# Test the entire list
 test(test_values)
+
+# Write the entire list to a file
+f = 'test_regular.bin'
+encode(test_values, filename=f)
+
+# Validate the file
+if validate(filename=f) == False:
+    print(f"Incorrectly invalidated file '{f}'")
+
+# Read the file again
+if decode(filename=f) != test_values:
+    print(f"Incorrectly decoded file '{f}'")
+
+# Clean up file
+import os
+os.remove(f)
 

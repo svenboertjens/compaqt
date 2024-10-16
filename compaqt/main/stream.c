@@ -187,8 +187,10 @@ static PyObject *update_encoder(PyStreamEncoderObject *stream_obj, PyObject *arg
     }
 
     // Write the number of items metadata to the file
-    size_t num_items_little = LITTLE_64(s->num_items);
-    fwrite(&num_items_little, 8, 1, s->file);
+    char num_items_buf[8];
+    size_t offset = 0;
+    WR_METADATA_LM2(num_items_buf, offset, s->num_items, 6);
+    fwrite(num_items_buf, 8, 1, s->file);
     fclose(s->file);
 
     CLEAR_MEMORY;

@@ -28,5 +28,3 @@ compare("MsgPack", msgpack.packb, msgpack.unpackb)
 compare("Pickle", pickle.dumps, pickle.loads)
 compare("JSON", json.dumps, json.loads)
 
-
-

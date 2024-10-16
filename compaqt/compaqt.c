@@ -1,10 +1,12 @@
 #define PY_SSIZE_CLEAN_T
 
 #include <Python.h>
-#include "metadata.h"
-#include "regular.h"
-#include "stream.h"
-#include "allocations.h"
+
+#include "main/regular.h"
+#include "main/stream.h"
+#include "main/validation.h"
+
+#include "settings/allocations.h"
 
 /* MODULE DEFINITIONS */
 

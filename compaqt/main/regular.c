@@ -1,7 +1,5 @@
 // This file contains the regular serialization methods
 
-#include "regular.h"
-
 #include <Python.h>
 #include "metadata.h"
 #include "serialization.h"

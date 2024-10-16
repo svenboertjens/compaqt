@@ -1,4 +1,4 @@
-# Todo
+# TODO
 
 This file contains bugs and features that might be worked on in the near future.
 
@@ -12,7 +12,7 @@ Known bugs that are being worked on:
 ## Features
 
 The following features are being worked on:
-- Streaming to/from files.
+- Code optimizations.
 
 
 ## Ideas

@@ -10,7 +10,7 @@ macros = []
 if sys.byteorder != "little" and not os.environ.get("SET_LITTLE_ENDIAN"):
     macros.append(("IS_LITTLE_ENDIAN", 0))
 
-if os.environ.get("SET_STRICT_ALIGNMENT") or platform.machine().strip(' _').lower().startswith("arm"):
+if os.environ.get("SET_STRICT_ALIGNMENT") or platform.machine().strip().strip('_').lower().startswith("arm"):
     macros.append(("STRICT_ALIGNMENT", 1))
 
 ext_modules = [
@@ -20,20 +20,17 @@ ext_modules = [
             'compaqt/compaqt.c',
             'compaqt/metadata.c',
             
-            'compaqt/serialization/serialization.c',
-            'compaqt/serialization/regular.c',
-            'compaqt/serialization/stream.c',
+            'compaqt/main/serialization.c',
+            'compaqt/main/regular.c',
+            'compaqt/main/stream.c',
+            'compaqt/main/validation.c',
             
             'compaqt/settings/allocations.c',
-            
-            'compaqt/misc/validation.c',
         ],
         include_dirs=[
-            '.',
             'compaqt/',
-            'compaqt/serialization/',
+            'compaqt/main/',
             'compaqt/settings/',
-            'compaqt/misc/'
         ],
         define_macros=macros
     ),
@@ -41,7 +38,7 @@ ext_modules = [
 
 setup(
     name="compaqt",
-    version="0.4.0",
+    version="0.4.1",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",
@@ -58,7 +55,12 @@ setup(
     
     ext_modules=ext_modules,
     package_data={
-        'compaqt': ['*.pyi']
+        'compaqt': [
+            '*.pyi',
+            '*.h',
+            'main/*.h',
+            'settings/*.h',
+        ]
     },
     include_package_data=True,
     

@@ -15,7 +15,7 @@
 /* ENDIANNESS */
 
 // Convert values to little-endian format
-#if (IS_LITTLE_ENDIAN == 1)
+#if (IS_LITTLE_ENDIAN == 0)
 
     // Already little-endian, don't change anything
     #define LITTLE_64(x) (x)
@@ -53,10 +53,10 @@
 
     // Don't cast doubles to integers as that can be undefined, instead use the safe copy method
     #define LITTLE_DOUBLE(x) do { \
-        uint64_t temp; \
-        memcpy(&temp, &(x), 8); \
-        temp = LITTLE_64(temp); \
-        memcpy(&(x), &temp, 8); \
+        uint64_t __temp; \
+        memcpy(&__temp, &(x), 8); \
+        __temp = LITTLE_64(__temp); \
+        memcpy(&(x), &__temp, 8); \
     } while (0)
 
 #endif
@@ -120,14 +120,17 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
 
 // Write length mode 2
 #define WR_METADATA_LM2(msg, offset, length, num_bytes) do { \
-    memcpy(msg + offset, &(length), num_bytes); \
+    const size_t __length = LITTLE_64(length); \
+    memcpy(msg + offset, &(__length), num_bytes + 2); \
     offset += num_bytes + 2; \
 } while (0)
 
 // Read length mode 2
 #define RD_METADATA_LM2(msg, offset, length, num_bytes) do { \
     length = 0; \
-    memcpy(&(length), msg + offset, num_bytes); \
+    size_t __length; \
+    memcpy(&(__length), msg + offset, num_bytes + 2); \
+    (length) = LITTLE_64(__length); \
     offset += num_bytes + 2; \
 } while (0)
 
@@ -252,10 +255,10 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
     } while (0)
     #define complex_rd(b, value) do { \
         Py_complex temp; \
-        temp.real = (*(double *)(b->msg + b->offset)); \
+        temp.real = *(double *)(b->msg + b->offset); \
         LITTLE_DOUBLE(temp.real); \
         b->offset += 8; \
-        temp.imag = (*(double *)(b->msg + b->offset)); \
+        temp.imag = *(double *)(b->msg + b->offset); \
         LITTLE_DOUBLE(temp.imag); \
         b->offset += 8; \
         value = PyComplex_FromCComplex(temp); \
@@ -264,29 +267,31 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
 #else
 
     #define float_wr(b, value) do { \
-        double num = LITTLE_DOUBLE(*(uint64_t *)(&PyFloat_AS_DOUBLE(value))); \
+        double num = PyFloat_AS_DOUBLE(value); \
+        LITTLE_DOUBLE(num); \
         memcpy(b->msg + b->offset, &num, 8); \
         b->offset += 8; \
     } while (0)
     #define float_rd(b, value) do { \
         double num = 0; \
         memcpy(&num, b->msg + b->offset, 8); \
-        value = PyFloat_FromDouble(LITTLE_DOUBLE(*(uint64_t *)(&num))); \
+        LITTLE_DOUBLE(num); \
+        value = PyFloat_FromDouble(num); \
         b->offset += 8; \
     } while (0)
 
     #define complex_wr(b, value) do { \
         Py_complex complex = PyComplex_AsCComplex(value); \
-        complex.real = LITTLE_DOUBLE((uint64_t)(complex.real)); \
-        complex.imag = LITTLE_DOUBLE((uint64_t)(complex.imag)); \
+        LITTLE_DOUBLE(complex.real); \
+        LITTLE_DOUBLE(complex.imag); \
         memcpy(b->msg + b->offset, &complex, sizeof(Py_complex)); \
         b->offset += sizeof(Py_complex); \
     } while (0)
     #define complex_rd(b, value) do { \
         Py_complex complex; \
         memcpy(&complex, b->msg + b->offset, sizeof(Py_complex)); \
-        complex.real = LITTLE_DOUBLE((uint64_t)(complex.real)); \
-        complex.imag = LITTLE_DOUBLE((uint64_t)(complex.imag)); \
+        LITTLE_DOUBLE(complex.real); \
+        LITTLE_DOUBLE(complex.imag); \
         value = PyComplex_FromCComplex(complex); \
         b->offset += sizeof(Py_complex); \
     } while (0)

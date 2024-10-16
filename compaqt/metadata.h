@@ -15,7 +15,7 @@
 /* ENDIANNESS */
 
 // Convert values to little-endian format
-#if (IS_LITTLE_ENDIAN == 0)
+#if (IS_LITTLE_ENDIAN == 1)
 
     // Already little-endian, don't change anything
     #define LITTLE_64(x) (x)

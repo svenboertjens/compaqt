@@ -3,6 +3,15 @@
 All changes to the `compaqt` module are documented here.
 
 
+## [0.4.2] - 2024-10-17
+
+### Fixes:
+- Zero-division error in dynamic allocation algorithm;
+
+### Updates:
+- Re-add dynamic allocation algorithm;
+
+
 ## [0.4.1] - 2024-10-16
 
 ### Fixes:

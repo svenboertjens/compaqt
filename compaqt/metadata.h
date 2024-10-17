@@ -80,7 +80,7 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
         if (reallocs != 0)
         {
             const size_t difference = offset - initial_allocated;
-            const size_t med_diff = difference / num_items;
+            const size_t med_diff = difference / (num_items + 1);
 
             avg_realloc_size += difference >> 1;
             avg_item_size += med_diff >> 1;
@@ -88,7 +88,7 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
         else
         {
             const size_t difference = initial_allocated - offset;
-            const size_t med_diff = difference / num_items;
+            const size_t med_diff = difference / (num_items + 1);
             const size_t diff_small = difference >> 4;
             const size_t med_small = med_diff >> 5;
 

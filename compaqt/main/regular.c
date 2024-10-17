@@ -34,6 +34,63 @@ static inline int offset_check(buffer_t *b, const size_t length)
     return 0;
 }
 
+static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *type)
+{
+    size_t num_items;
+    size_t initial_alloc;
+
+    if (type == &PyList_Type)
+    {
+        num_items = PyList_GET_SIZE(cont);
+
+        initial_alloc = num_items * avg_item_size + avg_realloc_size;
+        b->msg = (char *)malloc(initial_alloc);
+        b->allocated = initial_alloc;
+
+        if (b->msg == NULL)
+        {
+            PyErr_NoMemory();
+            return 1;
+        }
+
+        WR_METADATA(b->msg, b->offset, DT_ARRAY, num_items);
+
+        for (size_t i = 0; i < num_items; ++i)
+            if (encode_item((buffer_t *)b, PyList_GET_ITEM(cont, i), offset_check) == 1) return 1;
+    }
+    else
+    {
+        num_items = PyDict_GET_SIZE(cont);
+
+        // Allocate for twice as many items as we have pairs of keys and values
+        initial_alloc = (num_items << 1) * avg_item_size + avg_realloc_size;
+        b->msg = (char *)malloc(initial_alloc);
+
+        if (b->msg == NULL)
+        {
+            PyErr_NoMemory();
+            return 1;
+        }
+
+        WR_METADATA(b->msg, b->offset, DT_DICTN, num_items);
+
+        num_items <<= 1;
+
+        PyObject *key;
+        PyObject *val;
+        Py_ssize_t pos = 0;
+
+        while (PyDict_Next(cont, &pos, &key, &val))
+        {
+            if (encode_item((buffer_t *)b, key, offset_check) == 1) return 1;
+            if (encode_item((buffer_t *)b, val, offset_check) == 1) return 1;
+        }
+    }
+
+    update_allocation_settings(b->reallocs, b->offset, initial_alloc, num_items);
+    return 0;
+}
+
 PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     PyObject *value;
@@ -47,21 +104,31 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     encode_t b;
 
     b.offset = 0;
-    b.msg = (char *)malloc(avg_realloc_size);
-    b.allocated = avg_realloc_size;
     b.reallocs = 0;
 
-    if (b.msg == NULL)
-    {
-        PyErr_NoMemory();
-        return NULL;
-    }
+    // See if we got a list or dict type
+    PyTypeObject *type = Py_TYPE(value);
 
-    // Encode the value
-    if (encode_item((buffer_t *)(&b), value, offset_check) == 1)
+    if (type == &PyList_Type || type == &PyDict_Type)
     {
-        free(b.msg);
-        return NULL;
+        // This manages the initial buffer allocation itself
+        if (encode_container(&b, value, type) == 1)
+        {
+            free(b.msg);
+            return NULL;
+        }
+    }
+    else
+    {
+        // Set the message to NULL and 0 allocation space to let `encode_item` handle the initial alloc using its overwrite checks
+        b.msg = NULL;
+        b.allocated = 0;
+
+        if (encode_item((buffer_t *)(&b), value, offset_check) == 1)
+        {
+            free(b.msg);
+            return NULL;
+        }
     }
 
     // See if we should write to a file

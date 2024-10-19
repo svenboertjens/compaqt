@@ -31,8 +31,6 @@ typedef int (*buffer_check_t)(buffer_t *, const size_t);
 
 int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
 {
-    OFFSET_CHECK(MAX_METADATA_SIZE);
-
     PyTypeObject *type = Py_TYPE(item);
     const char *tp_name = type->tp_name;
 
@@ -46,13 +44,14 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
 
             const size_t length = bytes_ln(item);
 
+            OFFSET_CHECK(MAX_METADATA_SIZE + length);
             WR_METADATA(b->msg, b->offset, DT_BYTES, length);
-            OFFSET_CHECK(length);
 
             bytes_wr(b, item, length);
         }
         else // Boolean
         {
+            OFFSET_CHECK(1);
             bool_wr(b, item);
         }
         break;
@@ -64,8 +63,8 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
         size_t length;
         const char *bytes = string_ln(item, length);
 
+        OFFSET_CHECK(MAX_METADATA_SIZE + length);
         WR_METADATA(b->msg, b->offset, DT_STRNG, length);
-        OFFSET_CHECK(length);
 
         string_wr(b, bytes, length);
         break;
@@ -76,8 +75,8 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
 
         const size_t length = integer_ln(item);
 
+        OFFSET_CHECK(MAX_METADATA_SIZE + length);
         WR_METADATA(b->msg, b->offset, DT_INTGR, length);
-        OFFSET_CHECK(length);
 
         integer_wr(b, item, length);
         break;
@@ -85,6 +84,7 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
     case 'f': // Float
     {
         DT_CHECK(PyFloat_Type);
+        OFFSET_CHECK(9);
 
         *(b->msg + b->offset++) = DT_FLOAT;
 
@@ -103,6 +103,7 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
     }
     case 'N': // NoneType
     {
+        OFFSET_CHECK(1);
         *(b->msg + b->offset++) = DT_NONTP;
         break;
     }
@@ -111,6 +112,8 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
         DT_CHECK(PyList_Type);
 
         const size_t num_items = (size_t)PyList_GET_SIZE(item);
+
+        OFFSET_CHECK(MAX_METADATA_SIZE);
         WR_METADATA(b->msg, b->offset, DT_ARRAY, num_items);
 
         for (size_t i = 0; i < num_items; ++i)
@@ -123,6 +126,8 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
         DT_CHECK(PyDict_Type);
 
         const size_t num_items = PyDict_GET_SIZE(item);
+
+        OFFSET_CHECK(MAX_METADATA_SIZE);
         WR_METADATA(b->msg, b->offset, DT_DICTN, num_items);
 
         Py_ssize_t pos = 0;
@@ -279,6 +284,9 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
             }
 
             PyDict_SetItem(dict, key, val);
+
+            Py_DECREF(key);
+            Py_DECREF(val);
         }
 
         return dict;

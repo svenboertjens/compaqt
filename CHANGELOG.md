@@ -3,6 +3,17 @@
 All changes to the `compaqt` module are documented here.
 
 
+## [0.4.3] - 2024-10-??
+
+### Fixes:
+- Fix mode 2 metadata reading (used for sizes >= 2048);
+- Fix memory leak in nested dictionary objects;
+
+### Updates:
+- Performance improvements in serialization;
+- More efficient mode 2 metadata byte counting;
+
+
 ## [0.4.2] - 2024-10-17
 
 ### Fixes:

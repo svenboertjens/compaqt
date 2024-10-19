@@ -24,18 +24,18 @@
 
 #else
 
-    // GCC and CLANG builtins
+    // GCC and CLANG intrinsics
     #if defined(__GNUC__) || defined(__clang__)
 
         #define LITTLE_64(x) (__builtin_bswap64(x))
 
-    // MSCV builtins
+    // MSCV intrinsics
     #elif defined(_MSC_VER)
 
         #include <intrin.h>
         #define LITTLE_64(x) (_byteswap_uint64(x))
 
-    // Fallbacks with manual swapping
+    // Fallback with manual swapping
     #else
 
         #define LITTLE_64(x) ( \
@@ -60,6 +60,41 @@
     } while (0)
 
 #endif
+
+/* INTRINSICS */
+
+// GCC and CLANG
+#if (defined(__GNUC__) || defined(__clang__))
+
+    #define LEADING_ZEROES_64(x) (__builtin_clzll(x))
+
+// MSCV
+#elif defined(_MSC_VER)
+
+    #include <intrin.h>
+    #define LEADING_ZEROES_64(x) (8 - _BitScanReverse64(x))
+
+// Fallback
+#else
+
+    static inline int LEADING_ZEROES_64(uint64_t x)
+    {
+        int n = 64;
+
+        if (x <= 0x00000000FFFFFFFF) { n -= 32; x <<= 32; }
+        if (x <= 0x0000FFFFFFFFFFFF) { n -= 16; x <<= 16; }
+        if (x <= 0x00FFFFFFFFFFFFFF) { n -=  8; x <<=  8; } 
+        if (x <= 0x0FFFFFFFFFFFFFFF) { n -=  4; x <<=  4; } 
+        if (x <= 0x3FFFFFFFFFFFFFFF) { n -=  2; x <<=  2; } 
+        if (x <= 0x7FFFFFFFFFFFFFFF) { n -=  1; }
+
+        return n;
+    }
+
+#endif
+
+// Count the number of used bytes in a 64-bit unsigned integer
+#define USED_BYTES_64(x) (8 - (LEADING_ZEROES_64(x) >> 3))
 
 /* ALLOC SETTINGS */
 
@@ -107,59 +142,61 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
 
 /* METADATA */
 
-// FOR METADATA DOCUMENTATION, SEE "docs/metadata.md"
-
-
-// The maximum bytes metadata will take up
+// The maximum size metadata will take up
 #define MAX_METADATA_SIZE 9
 
-// Write the length mode 2 mask (separated from main LM2 macro for streaming)
+// Write the length mode 2 mask (separated from main LM2 macro for streaming methods)
 #define WR_METADATA_LM2_MASK(msg, offset, mask, num_bytes) do { \
-    *((msg) + offset++) = (mask) | 0b00011000 | (num_bytes << 5); \
+    /* Minus 1 because we're guaranteed to use at least 1 byte, and only up to the number 7 fits in 3 bytes */ \
+    *((msg) + offset++) = (mask) | 0b00011000 | ((num_bytes - 1) << 5); \
 } while (0)
 
 // Write length mode 2
 #define WR_METADATA_LM2(msg, offset, length, num_bytes) do { \
     const size_t __length = LITTLE_64(length); \
-    memcpy(msg + offset, &(__length), num_bytes + 2); \
-    offset += num_bytes + 2; \
-} while (0)
-
-// Read length mode 2
-#define RD_METADATA_LM2(msg, offset, length, num_bytes) do { \
-    length = 0; \
-    size_t __length; \
-    memcpy(&(__length), msg + offset, num_bytes + 2); \
-    (length) = LITTLE_64(__length); \
-    offset += num_bytes + 2; \
+    memcpy(msg + offset, &(__length), num_bytes); \
+    offset += num_bytes; \
 } while (0)
 
 // Write metadata
 #define WR_METADATA(msg, offset, dt_mask, length) do { \
-    if (((length) >> 4) == 0) \
+    if (length < 16) \
         *((msg) + offset++) = (dt_mask) | ((length) << 4); \
-    else if (((length) >> 11) == 0) \
+    else if (length < 2048) \
     { \
         *((msg) + offset++) = (dt_mask) | 0b00001000 | ((length) << 5); \
         *((msg) + offset++) = (length) >> 3; \
+        break; \
     } \
     else \
     { \
-        /* The number of bytes doesn't count the first 2 bytes, which are guaranteed to be used */ \
-        const int num_bytes = !!((length) >> (8 * 2)) + !!((length) >> (8 * 3)) + !!((length) >> (8 * 4)) + !!((length) >> (8 * 5)) + !!((length) >> (8 * 6)) + !!((length) >> (8 * 7)); \
+        const int num_bytes = USED_BYTES_64(length); \
         WR_METADATA_LM2_MASK(msg, offset, dt_mask, num_bytes); \
         WR_METADATA_LM2(msg, offset, length, num_bytes); \
         break; \
     } \
 } while (0)
 
+// Read length mode 2
+#define RD_METADATA_LM2(msg, offset, length, num_bytes) do { \
+    length = 0; \
+    size_t __length = 0; \
+    memcpy(&(__length), msg + offset, num_bytes); \
+    (length) = LITTLE_64(__length); \
+    offset += num_bytes; \
+} while (0)
+
+// Read metadata
 #define RD_METADATA(msg, offset, length) do { \
-    switch (*((msg) + offset) & 0b00011000) \
+    switch ((*((msg) + offset) & 0b00011000) >> 3) \
     { \
-    case 0b00010000: \
-    case 0b00000000: \
-        (length) = (*((msg) + offset++) & 0xFF) >> 4; break; \
-    case 0b00001000: \
+    case 0b10: \
+    case 0b00: \
+    { \
+        (length) = (*((msg) + offset++) & 0xFF) >> 4; \
+        break; \
+    } \
+    case 0b01: \
     { \
         (length)  = (*((msg) + offset++) & 0xFF) >> 5; \
         (length) |= (*((msg) + offset++) & 0xFF) << 3; \
@@ -167,7 +204,8 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
     } \
     default: \
     { \
-        const int num_bytes = (*((msg) + offset++) & 0b11100000) >> 5; \
+        /* Plus 1 because we stored 1 less earlier */ \
+        const int num_bytes = ((*((msg) + offset++) & 0b11100000) >> 5) + 1; \
         RD_METADATA_LM2(msg, offset, length, num_bytes); \
         break; \
     } \

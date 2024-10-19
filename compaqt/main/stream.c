@@ -189,7 +189,7 @@ static PyObject *update_encoder(PyStreamEncoderObject *stream_obj, PyObject *arg
     // Write the number of items metadata to the file
     char num_items_buf[8];
     size_t offset = 0;
-    WR_METADATA_LM2(num_items_buf, offset, s->num_items, 6);
+    WR_METADATA_LM2(num_items_buf, offset, s->num_items, 8);
     fwrite(num_items_buf, 8, 1, s->file);
     fclose(s->file);
 
@@ -348,8 +348,8 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
         // Read the container datatype
         const char datachar = *buf & 0b00000111;
 
-        // The MODE 2 8-byte length metadata is equal to `0b11011000`
-        if ((*buf & 0b11011000) != 0b11011000 || (datachar != DT_ARRAY && datachar != DT_DICTN))
+        // The MODE 2 8-byte length metadata is equal to `0b11111000`
+        if ((*buf & 0b11111000) != 0b11111000 || (datachar != DT_ARRAY && datachar != DT_DICTN))
         {
             PyErr_SetString(PyExc_ValueError, "The existing file data does not match the encoding stream expectations");
             fclose(file);
@@ -362,7 +362,7 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
 
         // Rebuild the value in the metadata MODE 2 format
         size_t offset = 1;
-        RD_METADATA_LM2(buf, offset, s->num_items, 6);
+        RD_METADATA_LM2(buf, offset, s->num_items, 8);
 
         fclose(file);
     }
@@ -408,7 +408,7 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
         char buf[9] = {0};
         size_t offset = 0;
         const char datachar = value_type == &PyList_Type ? DT_ARRAY : DT_DICTN;
-        WR_METADATA_LM2_MASK(buf, offset, datachar, 6);
+        WR_METADATA_LM2_MASK(buf, offset, datachar, 8);
 
         fwrite(&buf, 9, 1, file);
         fclose(file);

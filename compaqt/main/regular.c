@@ -25,7 +25,7 @@ static inline int offset_check(buffer_t *b, const size_t length)
         if (tmp == NULL)
         {
             PyErr_NoMemory();
-            return 0;
+            return 1;
         }
         b->allocated = new_length;
         b->msg = tmp;
@@ -215,18 +215,18 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
         // The amount to allocate is the size of the file
         b.allocated = ftell(file);
 
-        b.msg = (char *)malloc(b.allocated);
-        if (b.msg == NULL)
-        {
-            PyErr_NoMemory();
-            fclose(file);
-            return NULL;
-        }
-
         // Go back to the start of the file to read its contents
         if (fseek(file, 0, SEEK_SET) != 0)
         {
             PyErr_Format(PyExc_FileNotFoundError, "Unable to find the start of file '%s'", filename);
+            fclose(file);
+            return NULL;
+        }
+
+        b.msg = (char *)malloc(b.allocated);
+        if (b.msg == NULL)
+        {
+            PyErr_NoMemory();
             fclose(file);
             return NULL;
         }
@@ -243,6 +243,11 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 
     b.offset = 0;
 
-    return decode_item(&b, overread_check);
+    PyObject *result = decode_item(&b, overread_check);
+
+    if (value == NULL)
+        free(b.msg);
+    
+    return result;
 }
 

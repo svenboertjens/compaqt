@@ -13,9 +13,6 @@ def benchmark(value):
 
 print(f"Iterations: {iterations}\n")
 
-benchmark(1024)
-benchmark('Hello, world!')
-benchmark(3.14)
 benchmark(['Hello', 'world!'])
 benchmark({1: b'item'})
 

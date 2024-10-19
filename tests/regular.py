@@ -15,11 +15,8 @@ def test(v: any) -> None:
         
         if v != decode(encoded):
             print(f'Failed: {shorten(v)}\n')
-            
-            if validate(encoded, err_on_invalid=False) == True:
-                print(f'Incorrectly validated: {shorten(v)}\n')
         
-        elif validate(encoded, err_on_invalid=False) == False:
+        if validate(encoded, err_on_invalid=False) == False:
             print(f'Incorrectly invalidated: {shorten(v)}\n')
         
     except Exception as e:
@@ -38,11 +35,11 @@ encode(test_values, filename=f)
 
 # Validate the file
 if validate(filename=f) == False:
-    print(f"Incorrectly invalidated file '{f}'")
+    print(f"Incorrectly invalidated file '{f}'\n")
 
 # Read the file again
 if decode(filename=f) != test_values:
-    print(f"Incorrectly decoded file '{f}'")
+    print(f"Incorrectly decoded file '{f}'\n")
 
 # Clean up file
 import os

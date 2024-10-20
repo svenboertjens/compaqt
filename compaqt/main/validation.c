@@ -39,7 +39,6 @@ static inline int _validate(buffer_t *b, FILE *file)
         {
         // Static lengths, no metadata to read, already incremented by `RD_DTMASK_GROUP`
         case DT_FLOAT: OVERREAD_CHECK(8);  b->offset += 8;  return 0;
-        case DT_CMPLX: OVERREAD_CHECK(16); b->offset += 16; return 0;
         case DT_BOOLF: // Boolean and NoneType values don't have more bytes, nothing to increment
         case DT_BOOLT:
         case DT_NONTP: return 0;

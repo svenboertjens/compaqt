@@ -12,7 +12,19 @@ values = [
     'Hello, world!',
     3.142,
     ['hello', 'compaqt!'],
-    {'17': 'dictionary'}
+    {'17': 'dictionary'},
+    {
+        'Word': 'by word',
+        'this': 'dict is',
+        'written': ',',
+        'with': 'items',
+        'such': 'as',
+        'numbers': 2008,
+        'bools': True,
+        'and': 'last but',
+        'not': 'least',
+        'strings': '"Hello, world!"',
+    },
 ]
 
 def compare(name, encode, decode):

@@ -36,13 +36,11 @@ static inline int offset_check(buffer_t *b, const size_t length)
 
 static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *type)
 {
-    size_t num_items;
+    size_t num_items = Py_SIZE(cont);
     size_t initial_alloc;
 
     if (type == &PyList_Type)
     {
-        num_items = PyList_GET_SIZE(cont);
-
         initial_alloc = num_items * avg_item_size + avg_realloc_size;
         b->msg = (char *)malloc(initial_alloc);
         b->allocated = initial_alloc;
@@ -60,11 +58,10 @@ static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *ty
     }
     else
     {
-        num_items = PyDict_GET_SIZE(cont);
-
         // Allocate for twice as many items as we have pairs of keys and values
         initial_alloc = (num_items << 1) * avg_item_size + avg_realloc_size;
         b->msg = (char *)malloc(initial_alloc);
+        b->allocated = initial_alloc;
 
         if (b->msg == NULL)
         {

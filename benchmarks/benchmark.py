@@ -14,5 +14,5 @@ def benchmark(value):
 print(f"Iterations: {iterations}\n")
 
 benchmark(['Hello', 'world!'])
-benchmark({1: b'item'})
+benchmark({1: 'item'})
 

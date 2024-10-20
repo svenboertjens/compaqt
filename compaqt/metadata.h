@@ -231,7 +231,6 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
 #define DT_BOOLT DT_GROUP | (unsigned char)(1 << 3) // True Booleans
 #define DT_FLOAT DT_GROUP | (unsigned char)(2 << 3) // Floats
 #define DT_NONTP DT_GROUP | (unsigned char)(3 << 3) // NoneTypes
-#define DT_CMPLX DT_GROUP | (unsigned char)(4 << 3) // Complexes
 
 #define DT_NOUSE (unsigned char)(6) // Not used by anything yet
 #define DT_EXTND (unsigned char)(7) // Custom datatypes (not implemented yet)

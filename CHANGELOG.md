@@ -3,7 +3,17 @@
 All changes to the `compaqt` module are documented here.
 
 
-## [0.4.3] - 2024-10-??
+## [0.4.4] - 2024-10-20
+
+### Fixes:
+- Dictionary serialization allocation issues;
+
+### Updates:
+- Drop support for complex types (decoding performance purposes);
+- Faster decoding speeds;
+
+
+## [0.4.3] - 2024-10-19
 
 ### Fixes:
 - Fix mode 2 metadata reading (used for sizes >= 2048);

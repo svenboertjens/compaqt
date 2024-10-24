@@ -93,7 +93,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     PyObject *value;
     char *filename = NULL;
 
-    static char *kwlist[] = {"value", "filename", NULL};
+    static char *kwlist[] = {"value", "file_name", NULL};
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|s", kwlist, &value, &filename))
         return NULL;
@@ -172,7 +172,7 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
     PyObject *value = NULL;
     char *filename = NULL;
 
-    static char *kwlist[] = {"value", "filename", NULL};
+    static char *kwlist[] = {"value", "file_name", NULL};
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|O!s", kwlist, &PyBytes_Type, &value, &filename))
         return NULL;

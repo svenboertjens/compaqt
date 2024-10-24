@@ -1,23 +1,22 @@
 # compaqt.pyi
     
-def encode(value: any, filename: str=None) -> None:
+def encode(value: any, file_name: str=None) -> bytes | None:
     """Encode a value to bytes.
     
     Args:
     - `value`:     The value to encode.
-    - `filename`:  The file to write encoded data to. By default doesn't write to a file and returns the bytes as a value.
+    - `file_name`:  The file to write encoded data to. By default doesn't write to a file and returns the bytes as a value.
     
     Returns the value encoded to bytes (if not writing to a file).
     
     Usage:
     >>> encoded = compaqt.encode(any_value)
     
-    Supported datatypes (excl. custom extensions):
+    Supported datatypes:
     - bytes
     - str
     - int
     - float
-    - complex
     - bool
     - NoneType
     - list
@@ -25,12 +24,12 @@ def encode(value: any, filename: str=None) -> None:
     """
     ...
 
-def decode(encoded: bytes=None, filename: str=None) -> any:
+def decode(encoded: bytes=None, file_name: str=None) -> any:
     """Decode an encoded bytes object back to the original value.
     
     Args:
-    - `encoded`:   The encoded value to decode. Overrides `filename`.
-    - `filename`:  The file to read the data from. Can be given INSTEAD of `encoded`.
+    - `encoded`:   The encoded value to decode. Overrides `file_name`.
+    - `file_name`:  The file to read the data from. Can be given INSTEAD of `encoded`.
     
     Returns the decoded value.
     
@@ -39,12 +38,12 @@ def decode(encoded: bytes=None, filename: str=None) -> any:
     """
     ...
 
-def validate(encoded: bytes=None, filename: str=None, file_offset: int=0, chunk_size: int=0, err_on_invalid: bool=False) -> bool:
+def validate(encoded: bytes=None, file_name: str=None, file_offset: int=0, chunk_size: int=0, err_on_invalid: bool=False) -> bool:
     """Validate whether encoded bytes object are valid
     
     Args:
-    - `encoded`:         The encoded value to validate. Overrides `filename`.
-    - `filename`:        The path to the file to read the data from. Can be given INSTEAD of `encoded`.
+    - `encoded`:         The encoded value to validate. Overrides `file_name`.
+    - `file_name`:        The path to the file to read the data from. Can be given INSTEAD of `encoded`.
     - `file_offset`:     The offset in the file to start reading from.
     - `chunk_size`:      The size of the internal buffer to process data in. Zero means the size of the file (starting from the file offset).
     - `err_on_invalid`:  Whether to throw an error if the the value is invalid.
@@ -73,7 +72,7 @@ class StreamEncoder:
     >>> stream = compaqt.StreamEncoder('myFolder/myFile.ext', list)
     """
     
-    def __init__(self, file_name: str, value_type: type=..., chunk_size: int=1024*256, resume_stream: bool=False, file_offset: int=0, preserve_file: bool=False) -> self:
+    def __init__(self, file_name: str, value_type: type=list, chunk_size: int=1024*256, resume_stream: bool=False, file_offset: int=0, preserve_file: bool=False) -> self:
         self.start_offset: int = ...
         self.total_offset: int = ...
         ...
@@ -118,13 +117,15 @@ class StreamDecoder:
         self.items_remaining: int = ...
         ...
     
-    def read(self, num_items: int=..., clear_memory: bool=False, chunk_size: int=...) -> None:
+    def read(self, num_items: int=..., clear_memory: bool=False, chunk_size: int=...) -> any:
         """Decode values from a decoding stream.
         
         Args:
         - `num_items`:     The number of items to decode. Defaults to all items. Does not throw an error if this value exceeds the number of items. Instead, we can see if the decoder is 'exhausted' with `stream.exhausted`.
         - `clear_memory`:  Whether to clear the allocated memory chunk after serializing instead of preserving it for the next call.
         - `chunk_size`:    Set the chunk size of the memory chunk. Defaults to the currently set value.
+        
+        Returns the decoded value.
         
         Usage:
         >>> values = stream.read()

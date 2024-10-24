@@ -82,7 +82,7 @@ PyObject *validate(PyObject *self, PyObject *args, PyObject *kwargs)
     size_t chunk_size = DEFAULT_CHUNK_SIZE;
     int err_on_invalid = 0;
 
-    static char *kwlist[] = {"value", "filename", "file_offset", "chunk_size", "err_on_invalid", NULL};
+    static char *kwlist[] = {"value", "file_name", "file_offset", "chunk_size", "err_on_invalid", NULL};
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|O!siii", kwlist, &PyBytes_Type, &value, &filename, (Py_ssize_t *)(&file_offset), (Py_ssize_t *)(&chunk_size), &err_on_invalid))
         return NULL;

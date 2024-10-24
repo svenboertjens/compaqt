@@ -31,14 +31,14 @@ test(test_values)
 
 # Write the entire list to a file
 f = 'test_regular.bin'
-encode(test_values, filename=f)
+encode(test_values, file_name=f)
 
 # Validate the file
-if validate(filename=f) == False:
+if validate(file_name=f) == False:
     print(f"Incorrectly invalidated file '{f}'\n")
 
 # Read the file again
-if decode(filename=f) != test_values:
+if decode(file_name=f) != test_values:
     print(f"Incorrectly decoded file '{f}'\n")
 
 # Clean up file

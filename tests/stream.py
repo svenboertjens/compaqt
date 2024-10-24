@@ -10,7 +10,7 @@ enc = StreamEncoder(f, list)
 enc.write(test_values)
 enc.finalize()
 
-validate(filename=f, err_on_invalid=True)
+validate(file_name=f, err_on_invalid=True)
 
 dec = StreamDecoder(f)
 if dec.read() != test_values:
@@ -26,7 +26,7 @@ offset = enc.start_offset
 
 enc.finalize()
 
-validate(filename=f, err_on_invalid=True, file_offset=offset)
+validate(file_name=f, err_on_invalid=True, file_offset=offset)
 
 dec = StreamDecoder(f, file_offset=offset)
 if dec.read() != test_values:
@@ -41,7 +41,7 @@ enc = StreamEncoder(f, list, file_offset=offset)
 enc.write(test_values)
 enc.finalize()
 
-validate(filename=f, err_on_invalid=True, file_offset=offset)
+validate(file_name=f, err_on_invalid=True, file_offset=offset)
 
 dec = StreamDecoder(f, file_offset=offset)
 if dec.read() != test_values:
@@ -55,7 +55,7 @@ enc.write(test_values)
 enc.write(test_values)
 enc.finalize()
 
-validate(filename=f, err_on_invalid=True)
+validate(file_name=f, err_on_invalid=True)
 
 dec = StreamDecoder(f)
 if dec.read(len(test_values)) != test_values:

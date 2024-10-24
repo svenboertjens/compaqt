@@ -145,26 +145,30 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
     if (overread_check(b, length) == 1) return NULL; \
 } while (0)
 
+// Metadata reading macros for specific metadata modes
 #define RD_LN0(byte) ((byte & 0xFF) >> 4)
-#define RD_LN1(m, o, l) do { \
-    l = (*(size_t *)(m + o) & 0xFFFF) >> 5; \
-    o += 2; \
+#define RD_LN1(msg, offset, length) do { \
+    length  = (*(msg + offset++) & 0xFF) >> 5; \
+    length |= (*(msg + offset++) & 0xFF) << 3; \
 } while (0)
-#define RD_LN2(m, o, l) do { \
-    const int nb = ((*(m + o++) & 0b11100000) >> 5) + 1; \
-    RD_METADATA_LM2(m, o, l, nb); \
+#define RD_LN2(msg, offset, length) do { \
+    const int num_bytes = ((*(msg + offset++) & 0b11100000) >> 5) + 1; \
+    RD_METADATA_LM2(msg, offset, length, num_bytes); \
 } while (0)
 
-#define MODE0_1(dt) ((dt))
-#define MODE0_2(dt) ((dt) | 0b10000)
-#define MODE1(dt)   ((dt) | 0b01000)
-#define MODE2(dt)   ((dt) | 0b11000)
+// Mode 0 metadata cases (`0b10000` case for mode 0 where first length bit is set)
+#define MODE0(dt) case (dt): case ((dt) | 0b10000):
+// Mode 1 metadata case
+#define MODE1(dt) case ((dt) | 0b01000):
+// Mode 2 metadata case
+#define MODE2(dt) case ((dt) | 0b11000):
 
 PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 {
     const char byte = *(b->msg + b->offset);
     switch (byte & 0b11111)
     {
+    // Static length types, no length metadata
     case DT_FLOAT:
     {
         ++(b->offset);
@@ -179,8 +183,9 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
     case DT_BOOLT: OVERREAD_CHECK(0); ++(b->offset); Py_RETURN_TRUE;
     case DT_BOOLF: OVERREAD_CHECK(0); ++(b->offset); Py_RETURN_FALSE;
     case DT_NONTP: OVERREAD_CHECK(0); ++(b->offset); Py_RETURN_NONE;
-    case MODE0_1(DT_BYTES):
-    case MODE0_2(DT_BYTES):
+
+    // Dynamic length types, with length metadata
+    MODE0(DT_BYTES)
     {
         size_t length = RD_LN0(byte);
         ++(b->offset);
@@ -191,7 +196,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return value;
     }
-    case MODE1(DT_BYTES):
+    MODE1(DT_BYTES)
     {
         size_t length;
         RD_LN1(b->msg, b->offset, length);
@@ -202,7 +207,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return value;
     }
-    case MODE2(DT_BYTES):
+    MODE2(DT_BYTES)
     {
         size_t length;
         RD_LN2(b->msg, b->offset, length);
@@ -213,8 +218,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return value;
     }
-    case MODE0_1(DT_STRNG):
-    case MODE0_2(DT_STRNG):
+    MODE0(DT_STRNG)
     {
         size_t length = RD_LN0(byte);
         ++(b->offset);
@@ -225,7 +229,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return value;
     }
-    case MODE1(DT_STRNG):
+    MODE1(DT_STRNG)
     {
         size_t length;
         RD_LN1(b->msg, b->offset, length);
@@ -236,7 +240,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return value;
     }
-    case MODE2(DT_STRNG):
+    MODE2(DT_STRNG)
     {
         size_t length;
         RD_LN2(b->msg, b->offset, length);
@@ -247,8 +251,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return value;
     }
-    case MODE0_1(DT_INTGR):
-    case MODE0_2(DT_INTGR):
+    MODE0(DT_INTGR)
     {
         size_t length = RD_LN0(byte);
         ++(b->offset);
@@ -259,7 +262,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return value;
     }
-    case MODE1(DT_INTGR):
+    MODE1(DT_INTGR)
     {
         size_t length;
         RD_LN1(b->msg, b->offset, length);
@@ -270,7 +273,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return value;
     }
-    case MODE2(DT_INTGR):
+    MODE2(DT_INTGR)
     {
         size_t length;
         RD_LN2(b->msg, b->offset, length);
@@ -281,8 +284,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return value;
     }
-    case MODE0_1(DT_ARRAY):
-    case MODE0_2(DT_ARRAY):
+    MODE0(DT_ARRAY)
     {
         size_t num_items = RD_LN0(byte);
         ++(b->offset);
@@ -312,7 +314,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return list;
     }
-    case MODE1(DT_ARRAY):
+    MODE1(DT_ARRAY)
     {
         size_t num_items;
         RD_LN1(b->msg, b->offset, num_items);
@@ -342,7 +344,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return list;
     }
-    case MODE2(DT_ARRAY):
+    MODE2(DT_ARRAY)
     {
         size_t num_items;
         RD_LN2(b->msg, b->offset, num_items);
@@ -372,8 +374,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return list;
     }
-    case MODE0_1(DT_DICTN):
-    case MODE0_2(DT_DICTN):
+    MODE0(DT_DICTN)
     {
         size_t num_items = RD_LN0(byte);
         ++(b->offset);
@@ -414,7 +415,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return dict;
     }
-    case MODE1(DT_DICTN):
+    MODE1(DT_DICTN)
     {
         size_t num_items;
         RD_LN1(b->msg, b->offset, num_items);
@@ -455,7 +456,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         return dict;
     }
-    case MODE2(DT_DICTN):
+    MODE2(DT_DICTN)
     {
         size_t num_items;
         RD_LN2(b->msg, b->offset, num_items);

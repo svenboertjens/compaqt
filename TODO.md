@@ -12,7 +12,7 @@ Known bugs that are being worked on:
 ## Features
 
 The following features are being worked on:
-- Code optimizations.
+- Internal types for a faster decoding method.
 
 
 ## Ideas

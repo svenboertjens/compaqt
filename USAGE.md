@@ -55,10 +55,6 @@ This covers the basic serialization methods.
 encode(value: any, file_name: str=None) -> bytes | None
 ```
 
-Args:
-- `value`:    The value to encode to bytes.
-- `file_name`: The file to write the data to.
-
 * `value`:
 The value to encode to bytes.
 
@@ -290,15 +286,11 @@ The two available modes are `manual` and `dynamic` (default), where `manual` let
 settings.manual_allocations(item_size: int, realloc_size: int) -> None
 ```
 
-Args:
-- `item_size`:    Bytes to allocate per item found in lists/dicts.
-- `realloc_size`: Bytes to allocate extra when the current allocation is insufficient.
+* `item_size`:
+The amount of bytes to allocate per item found in a list or dict. A key-value pair in a dict counts as 2 items.
 
-Example:
-```python
-# If we only want to serialize values with a size of 6 bytes, we can do this:
-compaqt.settings.manual_allocations(6, 18) # The 18 is for re-allocations, if necessary
-```
+* `realloc_size`:
+The amount of bytes to allocate as extra space when the currently allocated buffer is insufficient. This size is also added to the initial allocation size when starting an encoding process.
 
 
 #### Dynamic allocations
@@ -307,13 +299,12 @@ compaqt.settings.manual_allocations(6, 18) # The 18 is for re-allocations, if ne
 settings.dynamic_allocations(item_size: int=..., realloc_size: int=...) -> None
 ```
 
-Args:
-- `item_size`:    Bytes to allocate per item found in lists/dicts. Defaults to the currently set value.
-- `realloc_size`: Bytes to allocate extra when the current allocation is insufficient. Defaults to the currently set value.
+* `item_size`:
+The amount of bytes to allocate per item found in a list or dict. A key-value pair in a dict counts as 2 items.
 
-Example:
-```python
-# If we want to enable dynamic allocations, and start the item size at 8
-compaqt.settings.dynamic_allocations(item_size=8)
-```
+* `realloc_size`:
+The amount of bytes to allocate as extra space when the currently allocated buffer is insufficient. This size is also added to the initial allocation size when starting an encoding process.
+
+* Note: These values default to the currently set values when not provided.
+
 

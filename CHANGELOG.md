@@ -3,6 +3,13 @@
 All changes to the `compaqt` module are documented here.
 
 
+## [0.4.5] - 2024-10-24
+
+### Updates:
+- Improvements in usage explanations;
+- Correct stub file mistakes;
+
+
 ## [0.4.4] - 2024-10-20
 
 ### Fixes:

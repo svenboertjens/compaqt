@@ -300,7 +300,7 @@ settings.dynamic_allocations(item_size: int=..., realloc_size: int=...) -> None
 ```
 
 * `item_size`:
-The amount of bytes to allocate per item found in a list or dict. A key-value pair in a dict counts as 2 items.
+The amount of bytes to allocate per item found in a list or dict. One key-value pair in a dict counts as 2 items.
 
 * `realloc_size`:
 The amount of bytes to allocate as extra space when the currently allocated buffer is insufficient. This size is also added to the initial allocation size when starting an encoding process.

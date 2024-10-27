@@ -13,6 +13,9 @@ if sys.byteorder != "little" and not os.environ.get("SET_LITTLE_ENDIAN"):
 if os.environ.get("SET_STRICT_ALIGNMENT") or platform.machine().strip().strip('_').lower().startswith("arm"):
     macros.append(("STRICT_ALIGNMENT", 1))
 
+if os.environ.get("SET_EXPERIMENTAL"):
+    macros.append(("EXPERIMENTAL_METHODS", 1))
+
 ext_modules = [
     Extension(
         'compaqt.compaqt',
@@ -38,7 +41,7 @@ ext_modules = [
 
 setup(
     name="compaqt",
-    version="0.4.5",
+    version="0.5.0",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",

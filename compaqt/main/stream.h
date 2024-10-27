@@ -4,8 +4,8 @@
 #include <Python.h>
 #include "metadata.h"
 
-extern PyTypeObject PyStreamEncoderType;
-extern PyTypeObject PyStreamDecoderType;
+extern PyTypeObject stream_encoder_t;
+extern PyTypeObject stream_decoder_t;
 
 PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs);
 PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs);

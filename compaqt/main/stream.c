@@ -19,12 +19,12 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     stream_t *s;
-} PyStreamEncoderObject;
+} stream_encoder_ob;
 
 typedef struct {
     PyObject_HEAD
     stream_t *s;
-} PyStreamDecoderObject;
+} stream_decoder_ob;
 
 /* ENCODING */
 
@@ -88,7 +88,7 @@ static inline int encode_dict(stream_t *s, PyObject *value)
     } \
 } while (0)
 
-static PyObject *update_encoder(PyStreamEncoderObject *stream_obj, PyObject *args, PyObject *kwargs)
+static PyObject *update_encoder(stream_encoder_ob *stream_obj, PyObject *args, PyObject *kwargs)
 {
     PyObject *value;
     int clear_memory = 0;
@@ -197,7 +197,7 @@ static PyObject *update_encoder(PyStreamEncoderObject *stream_obj, PyObject *arg
     Py_RETURN_NONE;
 }
 
-static PyObject *finalize_encoder(PyStreamEncoderObject *stream_obj, PyObject *args)
+static PyObject *finalize_encoder(stream_encoder_ob *stream_obj, PyObject *args)
 {
     stream_t *s = stream_obj->s;
 
@@ -216,7 +216,7 @@ static PyObject *finalize_encoder(PyStreamEncoderObject *stream_obj, PyObject *a
     Py_RETURN_NONE;
 }
 
-static void encoder_dealloc(PyStreamEncoderObject *stream_obj)
+static void encoder_dealloc(stream_encoder_ob *stream_obj)
 {
     stream_t *s = stream_obj->s;
 
@@ -235,7 +235,7 @@ static void encoder_dealloc(PyStreamEncoderObject *stream_obj)
         PyObject_Del(stream_obj);
 }
 
-static PyObject *start_offset_encoder(PyStreamEncoderObject *stream_obj)
+static PyObject *start_offset_encoder(stream_encoder_ob *stream_obj)
 {
     stream_t *s = stream_obj->s;
 
@@ -248,7 +248,7 @@ static PyObject *start_offset_encoder(PyStreamEncoderObject *stream_obj)
     return PyLong_FromUnsignedLongLong(s->stream_offset);
 }
 
-static PyObject *total_offset_encoder(PyStreamEncoderObject *stream_obj)
+static PyObject *total_offset_encoder(stream_encoder_ob *stream_obj)
 {
     stream_t *s = stream_obj->s;
 
@@ -261,26 +261,26 @@ static PyObject *total_offset_encoder(PyStreamEncoderObject *stream_obj)
     return PyLong_FromUnsignedLongLong(s->offset);
 }
 
-static PyGetSetDef PyStreamEncoderGetSet[] = {
+static PyGetSetDef stream_encoder_getset[] = {
     {"start_offset", (getter)start_offset_encoder, NULL, "The initial file offset the encoder started writing to", NULL},
     {"total_offset", (getter)total_offset_encoder, NULL, "The total file offset the encoder is currently at", NULL},
     {NULL, NULL, NULL, NULL, NULL}
 };
 
-static PyMethodDef PyStreamEncoderMethods[] = {
+static PyMethodDef stream_encoder_methods[] = {
     {"write", (PyCFunction)update_encoder, METH_VARARGS | METH_KEYWORDS, "Update the stream encoder with new data"},
     {"finalize", (PyCFunction)finalize_encoder, METH_NOARGS, "Finalize the stream encoder and clean it up"},
     {NULL, NULL, 0, NULL}
 };
 
-PyTypeObject PyStreamEncoderType = {
+PyTypeObject stream_encoder_t = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "compaqt.StreamEncoder",
-    .tp_basicsize = sizeof(PyStreamEncoderObject),
+    .tp_basicsize = sizeof(stream_encoder_ob),
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_methods = PyStreamEncoderMethods,
+    .tp_methods = stream_encoder_methods,
     .tp_dealloc = (destructor)encoder_dealloc,
-    .tp_getset = PyStreamEncoderGetSet,
+    .tp_getset = stream_encoder_getset,
 };
 
 // Init function for encoder objects
@@ -428,7 +428,7 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
     // Copy the filename, plus 1 also copies the NULL-terminator
     memcpy(s->filename, filename, strlen(filename) + 1);
 
-    PyStreamEncoderObject *stream_obj = PyObject_New(PyStreamEncoderObject, &PyStreamEncoderType);
+    stream_encoder_ob *stream_obj = PyObject_New(stream_encoder_ob, &stream_encoder_t);
 
     if (stream_obj == NULL)
     {
@@ -445,7 +445,7 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
 
 /* DECODING */
 
-static PyObject *finalize_decoder(PyStreamDecoderObject *stream_obj, PyObject *args)
+static PyObject *finalize_decoder(stream_decoder_ob *stream_obj, PyObject *args)
 {
     stream_t *s = stream_obj->s;
 
@@ -568,7 +568,7 @@ static inline PyObject *decode_dict(stream_t *s, const size_t num_items)
     return dict;
 }
 
-static PyObject *update_decoder(PyStreamDecoderObject *stream_obj, PyObject *args, PyObject *kwargs)
+static PyObject *update_decoder(stream_decoder_ob *stream_obj, PyObject *args, PyObject *kwargs)
 {
     stream_t *s = stream_obj->s;
 
@@ -658,7 +658,7 @@ static PyObject *update_decoder(PyStreamDecoderObject *stream_obj, PyObject *arg
     return result;
 }
 
-static void decoder_dealloc(PyStreamDecoderObject *stream_obj)
+static void decoder_dealloc(stream_decoder_ob *stream_obj)
 {
     stream_t *s = stream_obj->s;
 
@@ -677,7 +677,7 @@ static void decoder_dealloc(PyStreamDecoderObject *stream_obj)
         PyObject_Del(stream_obj);
 }
 
-static PyObject *items_remaining_decoder(PyStreamDecoderObject *stream_obj, void *closure)
+static PyObject *items_remaining_decoder(stream_decoder_ob *stream_obj, void *closure)
 {
     stream_t *s = stream_obj->s;
 
@@ -690,7 +690,7 @@ static PyObject *items_remaining_decoder(PyStreamDecoderObject *stream_obj, void
     return PyLong_FromUnsignedLongLong(s->num_items);
 }
 
-static PyObject *total_offset_decoder(PyStreamEncoderObject *stream_obj)
+static PyObject *total_offset_decoder(stream_encoder_ob *stream_obj)
 {
     stream_t *s = stream_obj->s;
 
@@ -703,26 +703,26 @@ static PyObject *total_offset_decoder(PyStreamEncoderObject *stream_obj)
     return PyLong_FromUnsignedLongLong(s->offset);
 }
 
-static PyGetSetDef PyStreamDecoderGetSet[] = {
+static PyGetSetDef stream_decoder_getset[] = {
     {"total_offset", (getter)total_offset_decoder, NULL, "The total file offset the encoder is currently at", NULL},
     {"items_remaining", (getter)items_remaining_decoder, NULL, "The amount of items remaining to be read", NULL},
     {NULL, NULL, NULL, NULL, NULL}
 };
 
-static PyMethodDef PyStreamDecoderMethods[] = {
+static PyMethodDef stream_decoder_methods[] = {
     {"read", (PyCFunction)update_decoder, METH_VARARGS | METH_KEYWORDS, "De-serialize data from the stream decoder"},
     {"finalize", (PyCFunction)finalize_decoder, METH_NOARGS, "Finalize the stream decoder and clean it up"},
     {NULL, NULL, 0, NULL}
 };
 
-PyTypeObject PyStreamDecoderType = {
+PyTypeObject stream_decoder_t = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "compaqt.StreamEncoder",
-    .tp_basicsize = sizeof(PyStreamDecoderObject),
+    .tp_basicsize = sizeof(stream_decoder_ob),
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_methods = PyStreamDecoderMethods,
+    .tp_methods = stream_decoder_methods,
     .tp_dealloc = (destructor)decoder_dealloc,
-    .tp_getset = PyStreamDecoderGetSet,
+    .tp_getset = stream_decoder_getset,
 };
 
 // Init function for encoder objects
@@ -814,7 +814,7 @@ PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
     // Copy the filename, plus 1 also copies the NULL-terminator
     memcpy(s->filename, filename, strlen(filename) + 1);
 
-    PyStreamDecoderObject *stream_obj = PyObject_New(PyStreamDecoderObject, &PyStreamDecoderType);
+    stream_decoder_ob *stream_obj = PyObject_New(stream_decoder_ob, &stream_decoder_t);
 
     if (stream_obj == NULL)
     {

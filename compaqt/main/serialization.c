@@ -1,7 +1,6 @@
 // This file contains the main processing functions for serialization
 
-#include <Python.h>
-#include "metadata.h"
+#include "main/conversion.h"
 
 // The first values of all buffer structs, to accept and use generic structs
 typedef struct {

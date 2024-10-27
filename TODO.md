@@ -12,11 +12,11 @@ Known bugs that are being worked on:
 ## Features
 
 The following features are being worked on:
-- Internal types for a faster decoding method.
+- Custom datatype support.
 
 
 ## Ideas
 
 The ideas that *could* become a feature later on:
-- Custom datatype support.
+- No additional ideas atm.
 

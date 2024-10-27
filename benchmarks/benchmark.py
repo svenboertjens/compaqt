@@ -11,8 +11,8 @@ def benchmark(value):
     
     print(f"\nType '{type(value).__name__}': {value}\nEncode: {encode:.6f} s\nDecode: {decode:.6f} s\nSize:   {len(encoded)} bytes")
 
-print(f"Iterations: {iterations}\n")
+print(f"Iterations: {iterations}")
 
-benchmark(['Hello', 'world!'])
-benchmark({1: 'item'})
+benchmark(['Hello', 'world!', 'test', 'value', '123', '456'])
+#benchmark({1: 'item'})
 

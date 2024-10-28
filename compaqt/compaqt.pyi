@@ -1,6 +1,9 @@
 # compaqt.pyi
-    
-def encode(value: any, file_name: str=None) -> bytes | None:
+
+class CustomWriteTypes: pass
+class CustomReadTypes: pass
+
+def encode(value: any, file_name: str=None, custom_types: CustomWriteTypes=None) -> bytes | None:
     """Encode a value to bytes.
     
     Args:
@@ -24,7 +27,7 @@ def encode(value: any, file_name: str=None) -> bytes | None:
     """
     ...
 
-def decode(encoded: bytes=None, file_name: str=None) -> any:
+def decode(encoded: bytes=None, file_name: str=None, custom_types: CustomReadTypes=None) -> any:
     """Decode an encoded bytes object back to the original value.
     
     Args:
@@ -62,6 +65,7 @@ class StreamEncoder:
     - `file_name`:      The path to the file to write to.
     - `value_type`:     The type of value to serialize. Can be 'list' or 'dict'.
     - `chunk_size`:     How large the memory buffer for storing the encoded object can be before writing to the file.
+    - `custom_types`:   Object that holds custom types to encode that are not supported by default.
     - `resume_stream`:  If the stream was already initialized and you want to continue streaming to it.
     - `file_offset`:    What file position offset to start the stream at.
     - `preserve_file`:  If the current file needs to be preserved and the stream should start at the end of the file. Overrides the `resume_stream` and `file_offset` args.
@@ -72,7 +76,7 @@ class StreamEncoder:
     >>> stream = compaqt.StreamEncoder('myFolder/myFile.ext', list)
     """
     
-    def __init__(self, file_name: str, value_type: type=list, chunk_size: int=1024*256, resume_stream: bool=False, file_offset: int=0, preserve_file: bool=False) -> self:
+    def __init__(self, file_name: str, value_type: type=list, chunk_size: int=1024*256, custom_types: CustomWriteTypes=None, resume_stream: bool=False, file_offset: int=0, preserve_file: bool=False) -> self:
         self.start_offset: int = ...
         self.total_offset: int = ...
         ...
@@ -104,6 +108,7 @@ class StreamDecoder:
     Args:
     - `file_name`:    The path to the file to read from.
     - `chunk_size`:   How much memory to allocate for temporarily storing the encoded data from the file.
+    - `custom_types`: Object that holds custom types to decode that are not supported by default.
     - `file_offset`:  What file position offset to start the stream at.
     
     Returns a Decoding Stream object to (progressively) read values with.
@@ -112,7 +117,7 @@ class StreamDecoder:
     >>> stream = compaqt.StreamDecoder('myFolder/myFile.ext')
     """
     
-    def __init__(self, file_name: str, chunk_size: int=1024*256, file_offset: int=0) -> self:
+    def __init__(self, file_name: str, chunk_size: int=1024*256, custom_types: CustomReadTypes=None, file_offset: int=0) -> self:
         self.total_offset: int = ...
         self.items_remaining: int = ...
         ...
@@ -166,6 +171,34 @@ class settings:
         
         Usage:
         >>> compaqt.settings.dynamic_allocations(item_size=32, realloc_size=64)
+        """
+        ...
+
+class types:
+    """Contains type control for the serialization process
+    """
+    
+    def encoder_types(custom_types: {int: (type, function)}) -> CustomWriteTypes:
+        """Use custom types in encode functions.
+        
+        The `custom_types` is a dict object where the key should be the ID of the custom type (0-31).
+        The value is a tuple that holds the custom type belonging to the ID and the function to call for encoding values of the respective type.
+        
+        Returns an object to pass along to encode functions.
+        
+        Note: This is for encoding. For custom types with decoding, use `decoder_types`.
+        """
+        ...
+    
+    def decoder_types(custom_types: {int: function}) -> CustomReadTypes:
+        """Use custom types in decode functions.
+        
+        The `custom_types` is a dict object where the key should be the ID of the custom type (0-31). This ID should be the same as the ID specified for the custom encode object!
+        The value of the ID should be the function for decoding the bytes back to the respective value.
+        
+        Returns an object to pass along to decode functions.
+        
+        Note: This is for decoding. For custom types with encoding, use `encoder_types`.
         """
         ...
 

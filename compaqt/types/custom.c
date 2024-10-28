@@ -16,13 +16,16 @@ typedef struct {
 
 /* OBJECT CREATION */
 
+// Max types is 1 byte: 8 bits - 3 datatype mask bits = 5 bits: 2^5 - 1 = 32
 #define MAX_CUSTOM_TYPES 32
 #define MAX_TYPE_IDX (MAX_CUSTOM_TYPES - 1)
 
 void custom_types_wr_dealloc(custom_types_wr_ob *self)
 {
+    // Decref all types and functions stored 
     for (size_t i = 0; i < MAX_TYPE_IDX; ++i)
     {
+        // Only if not NULL as not all indexes have to be used
         if (self->types[i] != NULL)
         {
             Py_DECREF(self->types[i]);
@@ -54,7 +57,7 @@ void custom_types_rd_dealloc(custom_types_rd_ob *self)
 
 PyTypeObject custom_types_wr_t = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "compaqt.CustomTypesWrite",
+    .tp_name = "compaqt.CustomWriteTypes",
     .tp_basicsize = sizeof(custom_types_wr_ob),
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_dealloc = (destructor)custom_types_wr_dealloc,
@@ -62,7 +65,7 @@ PyTypeObject custom_types_wr_t = {
 
 PyTypeObject custom_types_rd_t = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "compaqt.CustomTypesRead",
+    .tp_name = "compaqt.CustomReadTypes",
     .tp_basicsize = sizeof(custom_types_rd_ob),
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_dealloc = (destructor)custom_types_rd_dealloc,
@@ -80,6 +83,7 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
     if (ob == NULL)
         return PyErr_NoMemory();
 
+    // Allocate space for the number of total types for the index-based approach
     ob->types = (PyTypeObject **)malloc(sizeof(PyTypeObject *) * MAX_CUSTOM_TYPES);
 
     if (ob->types == NULL)
@@ -96,6 +100,7 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
         return PyErr_NoMemory();
     }
 
+    // Initialize all pointers with NULL to keep unused ones as NULL
     memset(ob->types, 0, sizeof(PyTypeObject *) * MAX_CUSTOM_TYPES);
     memset(ob->writes, 0, sizeof(PyObject *) * MAX_CUSTOM_TYPES);
     
@@ -112,6 +117,7 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
             return NULL;
         }
 
+        // The index in the array to store the type in
         const size_t ptr_idx = PyLong_AsUnsignedLongLong(idx);
 
         if (ptr_idx > MAX_TYPE_IDX) {
@@ -127,6 +133,7 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
             return NULL;
         }
 
+        // Values can be the function and type interchangeably, see which is what and then link them to the `func` and `type`
         PyObject *val1 = PyTuple_GET_ITEM(tuple, 0);
         PyObject *val2 = PyTuple_GET_ITEM(tuple, 1);
 
@@ -153,9 +160,11 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
             return NULL;
         }
 
+        // Make sure the objects stay available by increasing the refcount
         Py_INCREF(func);
         Py_INCREF(type);
 
+        // Assign the write function and type to their respective index
         ob->types[ptr_idx] = ((PyTypeObject *)type);
         ob->writes[ptr_idx] = func;
     }
@@ -219,6 +228,7 @@ PyObject *get_custom_types_rd(PyObject *self, PyObject *args)
 
 int encode_custom(buffer_t *b, PyObject *value, custom_types_wr_ob *ob, buffer_check_t offset_check)
 {
+    // Check if we actually got a custom types object as it's optional
     if (ob == NULL)
     {
         PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", Py_TYPE(value)->tp_name);
@@ -227,14 +237,21 @@ int encode_custom(buffer_t *b, PyObject *value, custom_types_wr_ob *ob, buffer_c
     
     PyTypeObject *type = Py_TYPE(value);
 
+    // Iterate over all types to see if it's in the types list
     for (size_t i = 0; i < MAX_CUSTOM_TYPES; ++i)
     {
         if (ob->types[i] == type)
         {
+            // Call the write function provided by the user and pass the value to encode
             Py_INCREF(value);
             PyObject *result = PyObject_CallFunctionObjArgs(ob->writes[i], value, NULL);
             Py_DECREF(value);
 
+            // See if something went wrong
+            if (result == NULL)
+                return 1; // Error already set
+
+            // We expect to receive a bytes object back from the user
             if (!PyBytes_Check(result))
             {
                 PyErr_Format(PyExc_ValueError, "Expected a 'bytes' object from a custom type write function, got '%s'", Py_TYPE(result)->tp_name);
@@ -248,21 +265,28 @@ int encode_custom(buffer_t *b, PyObject *value, custom_types_wr_ob *ob, buffer_c
 
             offset_check(b, length + MAX_METADATA_SIZE);
 
+            // Write the extension mask along with the index above it
             *(b->msg + b->offset++) = DT_EXTND | (i << 3);
 
+            // Separate case if length is zero
             if (length == 0)
             {
                 *(b->msg + b->offset++) = (char)0;
             }
             else
             {
+                // Count how many bytes the length takes up
                 const size_t num_bytes = USED_BYTES_64(length);
 
+                // Write the number of bytes
                 *(b->msg + b->offset++) = (char)num_bytes;
 
-                memcpy(b->msg + b->offset, &length, num_bytes);
+                // Write the length as little-endian
+                const size_t length_little = LITTLE_64(length);
+                memcpy(b->msg + b->offset, &length_little, num_bytes);
                 b->offset += num_bytes;
 
+                // Write the actual bytes
                 memcpy(b->msg + b->offset, ptr, length);
                 b->offset += length;
             }
@@ -272,22 +296,25 @@ int encode_custom(buffer_t *b, PyObject *value, custom_types_wr_ob *ob, buffer_c
         }
     }
 
-    PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", Py_TYPE(value)->tp_name);
+    // No match found with any stored custom type
+    PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name);
     return 1;
 }
 
 PyObject *decode_custom(buffer_t *b, custom_types_rd_ob *ob, buffer_check_t overread_check)
 {
+    // Custom types are optional and NULL if we didn't get one
     if (ob == NULL)
     {
         PyErr_SetString(PyExc_ValueError, "Received an invalid or corrupted bytes object");
         return NULL;
     }
     
+    // Custom types take at least 2 bytes
     overread_check(b, 2);
     
+    // Get the pointer index we stored earlier to find the function to call
     const size_t ptr_idx = (*(b->msg + b->offset++) & 0xFF) >> 3;
-
     PyObject *func = ob->reads[ptr_idx];
 
     if (func == NULL)
@@ -296,21 +323,26 @@ PyObject *decode_custom(buffer_t *b, custom_types_rd_ob *ob, buffer_check_t over
         return NULL;
     }
     
+    // Read how many bytes the length was
     const size_t num_bytes = *(b->msg + b->offset++) & 0xFF;
 
+    // Retrieve the value length
     size_t length = 0;
     memcpy(&length, b->msg + b->offset, num_bytes);
     b->offset += num_bytes;
 
     overread_check(b, length);
 
+    // Create a bytes buffer to pass to the function for decoding
     PyObject *buffer = PyBytes_FromStringAndSize(b->msg + b->offset, length);
     b->offset += length;
 
+    // Call the user's decode function and pass the buffer of the value
     Py_INCREF(buffer);
     PyObject *result = PyObject_CallFunctionObjArgs(func, buffer, NULL);
     Py_DECREF(buffer);
 
+    // Would just return NULL if we received NULL
     return result;
 }
 

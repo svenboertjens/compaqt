@@ -1,6 +1,8 @@
 from test_values import test_values
 from compaqt import encode, decode, validate
 
+print('Testing regular serialization')
+
 def shorten(v: any) -> str:
     s = str(v)
     
@@ -44,4 +46,6 @@ if decode(file_name=f) != test_values:
 # Clean up file
 import os
 os.remove(f)
+
+print('Finished\n')
 

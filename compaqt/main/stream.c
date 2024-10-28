@@ -737,13 +737,10 @@ PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
     custom_types_rd_ob *custom_ob = NULL;
     size_t stream_offset = 0;
 
-    static char *kwlist[] = {"file_name", "chunk_size", "file_offset", NULL};
+    static char *kwlist[] = {"file_name", "chunk_size", "custom_types", "file_offset", NULL};
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|nO!n", kwlist, &filename, (Py_ssize_t *)&chunk_size, &custom_types_rd_t, &custom_ob, (Py_ssize_t *)&stream_offset))
-    {
-        PyErr_SetString(PyExc_ValueError, "Expected at least the `file_name` (str) argument");
         return NULL;
-    }
 
     stream_t *s = (stream_t *)malloc(sizeof(stream_t));
 

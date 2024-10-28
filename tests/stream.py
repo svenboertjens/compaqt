@@ -1,6 +1,8 @@
 from test_values import test_values
 from compaqt import StreamEncoder, StreamDecoder, validate
 
+print('Testing streaming serialization')
+
 # Filename for testing
 f = 'test_stream.bin'
 
@@ -67,4 +69,6 @@ dec.finalize()
 # Clean up file
 import os
 os.remove(f)
+
+print('Finished\n')
 

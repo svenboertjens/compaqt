@@ -79,9 +79,11 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
     }
     case 'N': // NoneType
     {
+        if (item != Py_None) goto mismatch;
         OFFSET_CHECK(1);
+        
         *(b->msg + b->offset++) = DT_NONTP;
-        break;
+        return 0;
     }
     case 'l': // List
     {

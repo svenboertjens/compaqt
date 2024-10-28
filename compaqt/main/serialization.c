@@ -1,26 +1,13 @@
 // This file contains the main processing functions for serialization
 
 #include "main/conversion.h"
-
-// The first values of all buffer structs, to accept and use generic structs
-typedef struct {
-    char *msg;
-    size_t offset;
-    size_t allocated;
-} buffer_t;
-
-// Function pointer for buffer checks
-typedef int (*buffer_check_t)(buffer_t *, const size_t);
+#include "types/custom.h"
 
 /* ENCODING */
 
 // Check datatype for a container item
 #define DT_CHECK(expected) do { \
-    if (type != &expected) \
-    { \
-        PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name); \
-        return 1; \
-    } \
+    if (type != &expected) goto mismatch; \
 } while (0)
 
 // Macro for calling and testing the offset check function
@@ -28,7 +15,7 @@ typedef int (*buffer_check_t)(buffer_t *, const size_t);
     if (offset_check(b, length) == 1) return 1; \
 } while (0)
 
-int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
+int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buffer_check_t offset_check)
 {
     PyTypeObject *type = Py_TYPE(item);
     const char *tp_name = type->tp_name;
@@ -53,7 +40,7 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
             OFFSET_CHECK(1);
             bool_wr(b, item);
         }
-        break;
+        return 0;
     }
     case 's': // String
     {
@@ -66,7 +53,7 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
         WR_METADATA(b->msg, b->offset, DT_STRNG, length);
 
         string_wr(b, bytes, length);
-        break;
+        return 0;
     }
     case 'i': // Integer
     {
@@ -78,7 +65,7 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
         WR_METADATA(b->msg, b->offset, DT_INTGR, length);
 
         integer_wr(b, item, length);
-        break;
+        return 0;
     }
     case 'f': // Float
     {
@@ -88,7 +75,7 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
         *(b->msg + b->offset++) = DT_FLOAT;
 
         float_wr(b, item);
-        break;
+        return 0;
     }
     case 'N': // NoneType
     {
@@ -106,9 +93,9 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
         WR_METADATA(b->msg, b->offset, DT_ARRAY, num_items);
 
         for (size_t i = 0; i < num_items; ++i)
-            if (encode_item(b, PyList_GET_ITEM(item, i), offset_check) == 1) return 1;
+            if (encode_item(b, PyList_GET_ITEM(item, i), custom_ob, offset_check) == 1) return 1;
         
-        break;
+        return 0;
     }
     case 'd': // Dict
     {
@@ -123,18 +110,14 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
         PyObject *key, *val;
         
         while (PyDict_Next(item, &pos, &key, &val))
-            if (encode_item(b, key, offset_check) == 1 || encode_item(b, val, offset_check) == 1) return 1;
+            if (encode_item(b, key, custom_ob, offset_check) == 1 || encode_item(b, val, custom_ob, offset_check) == 1) return 1;
         
-        break;
-    }
-    default: // Unsupported datatype
-    {
-        PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name);
-        return 1;
+        return 0;
     }
     }
 
-    return 0;
+    mismatch:
+    return encode_custom(b, item, custom_ob, offset_check);
 }
 
 /* DECODING */
@@ -162,7 +145,7 @@ int encode_item(buffer_t *b, PyObject *item, buffer_check_t offset_check)
 // Mode 2 metadata case
 #define MODE2(dt) case ((dt) | 0b11000):
 
-PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
+PyObject *decode_item(buffer_t *b, custom_types_rd_ob *custom_ob, buffer_check_t overread_check)
 {
     const char byte = *(b->msg + b->offset);
     switch (byte & 0b11111)
@@ -300,7 +283,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
         // Decode all items and append to the list
         for (size_t i = 0; i < num_items; ++i)
         {
-            PyObject *item = decode_item(b, overread_check);
+            PyObject *item = decode_item(b, custom_ob, overread_check);
 
             if (item == NULL)
             {
@@ -330,7 +313,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
         // Decode all items and append to the list
         for (size_t i = 0; i < num_items; ++i)
         {
-            PyObject *item = decode_item(b, overread_check);
+            PyObject *item = decode_item(b, custom_ob, overread_check);
 
             if (item == NULL)
             {
@@ -360,7 +343,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
         // Decode all items and append to the list
         for (size_t i = 0; i < num_items; ++i)
         {
-            PyObject *item = decode_item(b, overread_check);
+            PyObject *item = decode_item(b, custom_ob, overread_check);
 
             if (item == NULL)
             {
@@ -389,7 +372,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         for (size_t i = 0; i < num_items; ++i)
         {
-            PyObject *key = decode_item(b, overread_check);
+            PyObject *key = decode_item(b, custom_ob, overread_check);
 
             if (key == NULL)
             {
@@ -397,7 +380,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
                 return NULL;
             }
 
-            PyObject *val = decode_item(b, overread_check);
+            PyObject *val = decode_item(b, custom_ob, overread_check);
 
             if (val == NULL)
             {
@@ -430,7 +413,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         for (size_t i = 0; i < num_items; ++i)
         {
-            PyObject *key = decode_item(b, overread_check);
+            PyObject *key = decode_item(b, custom_ob, overread_check);
 
             if (key == NULL)
             {
@@ -438,7 +421,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
                 return NULL;
             }
 
-            PyObject *val = decode_item(b, overread_check);
+            PyObject *val = decode_item(b, custom_ob, overread_check);
 
             if (val == NULL)
             {
@@ -471,7 +454,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
 
         for (size_t i = 0; i < num_items; ++i)
         {
-            PyObject *key = decode_item(b, overread_check);
+            PyObject *key = decode_item(b, custom_ob, overread_check);
 
             if (key == NULL)
             {
@@ -479,7 +462,7 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
                 return NULL;
             }
 
-            PyObject *val = decode_item(b, overread_check);
+            PyObject *val = decode_item(b, custom_ob, overread_check);
 
             if (val == NULL)
             {
@@ -498,8 +481,6 @@ PyObject *decode_item(buffer_t *b, buffer_check_t overread_check)
     }
     }
 
-    // Invalid input received
-    PyErr_SetString(PyExc_ValueError, "Received an invalid or corrupted bytes string");
-    return NULL;
+    return decode_custom(b, custom_ob, overread_check);
 }
 

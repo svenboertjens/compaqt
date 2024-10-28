@@ -12,6 +12,16 @@
 // Default chunk size is 256KB
 #define DEFAULT_CHUNK_SIZE 1024*256
 
+// The first values of all buffer structs, to accept and use generic structs
+typedef struct {
+    char *msg;
+    size_t offset;
+    size_t allocated;
+} buffer_t;
+
+// Function pointer for buffer checks
+typedef int (*buffer_check_t)(buffer_t *, const size_t);
+
 /* ENDIANNESS */
 
 // Convert values to little-endian format
@@ -234,7 +244,7 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
 
 #define DT_EXTND (unsigned char)(6) // Custom types
 
-#define DT_NOT_USED (unsigned char)(7) // Not in use for anything (yet?)
+#define DT_NOUSE (unsigned char)(7) // Not in use for anything (yet?)
 
 
 #endif // GLOBALS_H

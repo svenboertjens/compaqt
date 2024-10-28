@@ -28,6 +28,8 @@ ext_modules = [
             'compaqt/main/stream.c',
             'compaqt/main/validation.c',
             
+            'compaqt/types/custom.c',
+            
             'compaqt/settings/allocations.c',
         ],
         include_dirs=[
@@ -62,6 +64,7 @@ setup(
             '*.pyi',
             '*.h',
             'main/*.h',
+            'types/*.h',
             'settings/*.h',
         ]
     },

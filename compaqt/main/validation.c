@@ -3,12 +3,6 @@
 #include <Python.h>
 #include "metadata.h"
 
-typedef struct {
-    char *msg;
-    size_t offset;
-    size_t allocated;
-} buffer_t;
-
 #define OVERREAD_CHECK(length) do { \
     if (b->offset + length > b->allocated) return 1; \
 } while (0)

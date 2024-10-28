@@ -34,7 +34,7 @@ static inline int offset_check(buffer_t *b, const size_t length)
     return 0;
 }
 
-static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *type)
+static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *type, custom_types_wr_ob *custom_ob)
 {
     size_t num_items = Py_SIZE(cont);
     size_t initial_alloc;
@@ -54,7 +54,7 @@ static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *ty
         WR_METADATA(b->msg, b->offset, DT_ARRAY, num_items);
 
         for (size_t i = 0; i < num_items; ++i)
-            if (encode_item((buffer_t *)b, PyList_GET_ITEM(cont, i), offset_check) == 1) return 1;
+            if (encode_item((buffer_t *)b, PyList_GET_ITEM(cont, i), custom_ob, offset_check) == 1) return 1;
     }
     else
     {
@@ -79,8 +79,8 @@ static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *ty
 
         while (PyDict_Next(cont, &pos, &key, &val))
         {
-            if (encode_item((buffer_t *)b, key, offset_check) == 1) return 1;
-            if (encode_item((buffer_t *)b, val, offset_check) == 1) return 1;
+            if (encode_item((buffer_t *)b, key, custom_ob, offset_check) == 1) return 1;
+            if (encode_item((buffer_t *)b, val, custom_ob, offset_check) == 1) return 1;
         }
     }
 
@@ -92,10 +92,11 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     PyObject *value;
     char *filename = NULL;
+    custom_types_wr_ob *custom_ob = NULL;
 
-    static char *kwlist[] = {"value", "file_name", NULL};
+    static char *kwlist[] = {"value", "file_name", "custom_types", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|s", kwlist, &value, &filename))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sO!", kwlist, &value, &filename, &custom_types_wr_t, &custom_ob))
         return NULL;
     
     encode_t b;
@@ -109,7 +110,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     if (type == &PyList_Type || type == &PyDict_Type)
     {
         // This manages the initial buffer allocation itself
-        if (encode_container(&b, value, type) == 1)
+        if (encode_container(&b, value, type, custom_ob) == 1)
         {
             free(b.msg);
             return NULL;
@@ -121,7 +122,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
         b.msg = NULL;
         b.allocated = 0;
 
-        if (encode_item((buffer_t *)(&b), value, offset_check) == 1)
+        if (encode_item((buffer_t *)(&b), value, custom_ob, offset_check) == 1)
         {
             free(b.msg);
             return NULL;
@@ -171,10 +172,11 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     PyObject *value = NULL;
     char *filename = NULL;
+    custom_types_rd_ob *custom_ob = NULL;
 
-    static char *kwlist[] = {"value", "file_name", NULL};
+    static char *kwlist[] = {"value", "file_name", "custom_types", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|O!s", kwlist, &PyBytes_Type, &value, &filename))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|O!sO!", kwlist, &PyBytes_Type, &value, &filename, &custom_types_rd_t, &custom_ob))
         return NULL;
     
     buffer_t b;
@@ -240,7 +242,7 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 
     b.offset = 0;
 
-    PyObject *result = decode_item(&b, overread_check);
+    PyObject *result = decode_item(&b, custom_ob, overread_check);
 
     if (value == NULL)
         free(b.msg);

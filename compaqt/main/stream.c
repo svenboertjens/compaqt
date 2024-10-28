@@ -19,11 +19,13 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     stream_t *s;
+    custom_types_wr_ob *custom_ob;
 } stream_encoder_ob;
 
 typedef struct {
     PyObject_HEAD
     stream_t *s;
+    custom_types_rd_ob *custom_ob;
 } stream_decoder_ob;
 
 /* ENCODING */
@@ -57,24 +59,24 @@ static inline int flush_check(buffer_t *b, const size_t length)
 }
 
 // Encode a list type
-static inline int encode_list(stream_t *s, PyObject *value)
+static inline int encode_list(stream_t *s, custom_types_wr_ob *custom_ob, PyObject *value)
 {
     const size_t num_items = PyList_GET_SIZE(value);
     
     for (size_t i = 0; i < num_items; ++i)
-        if (encode_item((buffer_t *)(s), PyList_GET_ITEM(value, i), flush_check) == 1) return 1;
+        if (encode_item((buffer_t *)(s), PyList_GET_ITEM(value, i), custom_ob, flush_check) == 1) return 1;
 
     s->num_items += num_items;
     return 0;
 }
 
-static inline int encode_dict(stream_t *s, PyObject *value)
+static inline int encode_dict(stream_t *s, custom_types_wr_ob *custom_ob, PyObject *value)
 {
     Py_ssize_t pos = 0;
     PyObject *key, *val;
 
     while (PyDict_Next(value, &pos, &key, &val))
-        if (encode_item((buffer_t *)(s), key, flush_check) == 1 || encode_item((buffer_t *)(s), val, flush_check) == 1) return 1;
+        if (encode_item((buffer_t *)(s), key, custom_ob, flush_check) == 1 || encode_item((buffer_t *)(s), val, custom_ob, flush_check) == 1) return 1;
 
     s->num_items += PyDict_GET_SIZE(value);
     return 0;
@@ -149,9 +151,9 @@ static PyObject *update_encoder(stream_encoder_ob *stream_obj, PyObject *args, P
     if (s->type == type)
     {
         if (type == &PyList_Type)
-            status = encode_list(s, value);
+            status = encode_list(s, stream_obj->custom_ob, value);
         else
-            status = encode_dict(s, value);
+            status = encode_dict(s, stream_obj->custom_ob, value);
     }
     else
     {
@@ -289,13 +291,14 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
     char *filename;
     PyTypeObject *value_type = &PyList_Type;
     size_t chunk_size = DEFAULT_CHUNK_SIZE;
+    custom_types_wr_ob *custom_ob;
     int resume_stream = 0;
     int preserve_file = 0;
     size_t stream_offset = 0;
 
-    static char *kwlist[] = {"file_name", "value_type", "chunk_size", "resume_stream", "file_offset", "preserve_file", NULL};
+    static char *kwlist[] = {"file_name", "value_type", "chunk_size", "custom_types", "resume_stream", "file_offset", "preserve_file", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|Onini", kwlist, &filename, (PyObject **)&value_type, (Py_ssize_t *)&chunk_size, &resume_stream, (Py_ssize_t *)&stream_offset, &preserve_file))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|OnO!ini", kwlist, &filename, (PyObject **)&value_type, (Py_ssize_t *)&chunk_size, &custom_types_wr_t, &custom_ob, &resume_stream, (Py_ssize_t *)&stream_offset, &preserve_file))
         return NULL;
 
     if (value_type != &PyList_Type && value_type != &PyDict_Type)
@@ -439,6 +442,7 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     stream_obj->s = s;
+    stream_obj->custom_ob = custom_ob;
 
     return (PyObject *)stream_obj;
 }
@@ -503,7 +507,7 @@ static inline int chunk_refresh_check(buffer_t *b, const size_t length)
     return 0;
 }
 
-static inline PyObject *decode_list(stream_t *s, const size_t num_items)
+static inline PyObject *decode_list(stream_t *s, custom_types_rd_ob *custom_ob, const size_t num_items)
 {
     PyObject *list = PyList_New(num_items);
 
@@ -515,7 +519,7 @@ static inline PyObject *decode_list(stream_t *s, const size_t num_items)
 
     for (size_t i = 0; i < num_items; ++i)
     {
-        PyObject *val = decode_item((buffer_t *)(s), chunk_refresh_check);
+        PyObject *val = decode_item((buffer_t *)(s), custom_ob, chunk_refresh_check);
 
         if (val == NULL)
         {
@@ -531,7 +535,7 @@ static inline PyObject *decode_list(stream_t *s, const size_t num_items)
     return list;
 }
 
-static inline PyObject *decode_dict(stream_t *s, const size_t num_items)
+static inline PyObject *decode_dict(stream_t *s, custom_types_rd_ob *custom_ob, const size_t num_items)
 {
     PyObject *dict = PyDict_New();
 
@@ -543,7 +547,7 @@ static inline PyObject *decode_dict(stream_t *s, const size_t num_items)
 
     for (size_t i = 0; i < num_items; ++i)
     {
-        PyObject *key = decode_item((buffer_t *)(s), chunk_refresh_check);
+        PyObject *key = decode_item((buffer_t *)(s), custom_ob, chunk_refresh_check);
 
         if (key == NULL)
         {
@@ -551,7 +555,7 @@ static inline PyObject *decode_dict(stream_t *s, const size_t num_items)
             return NULL;
         }
 
-        PyObject *val = decode_item((buffer_t *)(s), chunk_refresh_check);
+        PyObject *val = decode_item((buffer_t *)(s), custom_ob, chunk_refresh_check);
 
         if (val == NULL)
         {
@@ -648,9 +652,9 @@ static PyObject *update_decoder(stream_decoder_ob *stream_obj, PyObject *args, P
     PyObject *result;
 
     if (s->type == &PyList_Type)
-        result = decode_list(s, num_items);
+        result = decode_list(s, stream_obj->custom_ob, num_items);
     else
-        result = decode_dict(s, num_items);
+        result = decode_dict(s, stream_obj->custom_ob, num_items);
     
     s->stream_offset += s->offset;
 
@@ -730,11 +734,12 @@ PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     char *filename;
     size_t chunk_size = DEFAULT_CHUNK_SIZE;
+    custom_types_rd_ob *custom_ob = NULL;
     size_t stream_offset = 0;
 
     static char *kwlist[] = {"file_name", "chunk_size", "file_offset", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|nn", kwlist, &filename, (Py_ssize_t *)&chunk_size, (Py_ssize_t *)&stream_offset))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|nO!n", kwlist, &filename, (Py_ssize_t *)&chunk_size, &custom_types_rd_t, &custom_ob, (Py_ssize_t *)&stream_offset))
     {
         PyErr_SetString(PyExc_ValueError, "Expected at least the `file_name` (str) argument");
         return NULL;
@@ -825,6 +830,7 @@ PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     stream_obj->s = s;
+    stream_obj->custom_ob = custom_ob;
 
     return (PyObject *)stream_obj;
 }

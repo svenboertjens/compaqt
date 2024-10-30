@@ -1,6 +1,7 @@
 // This file contains custom datatype handling
 
 #include "metadata.h"
+#include "exceptions.h"
 
 typedef struct {
     PyObject_HEAD
@@ -209,9 +210,9 @@ PyObject *get_custom_types_rd(PyObject *self, PyObject *args)
 
         const size_t ptr_idx = PyLong_AsUnsignedLongLong(idx);
 
-        if (!PyFunction_Check(func))
+        if (!PyCallable_Check(func))
         {
-            PyErr_Format(PyExc_ValueError, "Expected values of type 'function', got '%s'", Py_TYPE(func)->tp_name);
+            PyErr_Format(PyExc_ValueError, "Expected values of type 'function' (or other callables), got '%s'", Py_TYPE(func)->tp_name);
             Py_DECREF(ob);
             return NULL;
         }
@@ -243,9 +244,7 @@ int encode_custom(buffer_t *b, PyObject *value, custom_types_wr_ob *ob, buffer_c
         if (ob->types[i] == type)
         {
             // Call the write function provided by the user and pass the value to encode
-            Py_INCREF(value);
             PyObject *result = PyObject_CallFunctionObjArgs(ob->writes[i], value, NULL);
-            Py_DECREF(value);
 
             // See if something went wrong
             if (result == NULL)
@@ -297,16 +296,16 @@ int encode_custom(buffer_t *b, PyObject *value, custom_types_wr_ob *ob, buffer_c
     }
 
     // No match found with any stored custom type
-    PyErr_Format(PyExc_ValueError, "Received unsupported datatype '%s'", type->tp_name);
+    PyErr_Format(EncodingError, "Received unsupported datatype '%s'", type->tp_name);
     return 1;
 }
 
 PyObject *decode_custom(buffer_t *b, custom_types_rd_ob *ob, buffer_check_t overread_check)
 {
-    // Custom types are optional and NULL if we didn't get one
+    // Custom types object is NULL if we didn't get one, in that case the bytes are invalid
     if (ob == NULL)
     {
-        PyErr_SetString(PyExc_ValueError, "Received an invalid or corrupted bytes object");
+        PyErr_SetString(DecodingError, "Likely received an invalid or corrupted bytes object");
         return NULL;
     }
     
@@ -317,9 +316,10 @@ PyObject *decode_custom(buffer_t *b, custom_types_rd_ob *ob, buffer_check_t over
     const size_t ptr_idx = (*(b->msg + b->offset++) & 0xFF) >> 3;
     PyObject *func = ob->reads[ptr_idx];
 
+    // No function was provided for this pointer index
     if (func == NULL)
     {
-        PyErr_SetString(PyExc_ValueError, "Received an invalid or corrupted bytes object");
+        PyErr_Format(DecodingError, "Could not find a valid function on ID %zu. Did you use the same custom type IDs as when encoding?", ptr_idx);
         return NULL;
     }
     
@@ -338,7 +338,6 @@ PyObject *decode_custom(buffer_t *b, custom_types_rd_ob *ob, buffer_check_t over
     b->offset += length;
 
     // Call the user's decode function and pass the buffer of the value
-    Py_INCREF(buffer);
     PyObject *result = PyObject_CallFunctionObjArgs(func, buffer, NULL);
     Py_DECREF(buffer);
 

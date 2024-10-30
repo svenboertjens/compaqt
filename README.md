@@ -3,58 +3,80 @@
 A compact serializer aiming for flexibility and performance.
 
 
+## What is this?
+
+Compaqt is an efficient serializer that aims for speed and compactness. Its purpose is similar to other libraries like JSON, except Compaqt uses a binary format to keep the data sizes low and the performance high.
+
+This library also aims to be flexible and has an easy-to-use API, providing methods for directly using files, chunk processing, and data validation.
+
+Besides the 'standard' types, this serializer supports custom types and lets you assign your own functions to serialize and de-serialize custom types.
+
+
+## How do I use it?
+
+For 'simple' serialization, this library provides the `encode` and `decode` methods. These methods directly return the encoded data as bytes or the value decoded from encoded data, respectively.
+Here's a simple example on how this works:
+
+```python
+import compaqt
+
+# The value we want to serialize, can be anything
+value = ...
+
+# We can just use the `encode` method to serialize it, that's all we have to do!
+encoded = compaqt.encode(value)
+
+# Do stuff
+...
+
+# Now, we want to retrieve the value we originally had, which we currently hold in the `encoded` variable
+# For this, all we have to do is use the `decode` method:
+value = compaqt.decode(encoded)
+
+# Now, `value` holds the original value, exactly as it was when we encoded it earlier
+```
+
+If we want to write the result to a file, and later read it from the file, we can use the optional `file_name` argument:
+
+```python
+# The file we want to write data to
+file_name = 'dir/file.bin'
+
+# Pass the filename to the function to write it to said file, instead of having the function return the bytes back directly
+compaqt.encode(value, file_name=file_name)
+
+# Do stuff
+...
+
+# Now, we want to read the value back from the file.
+# We only have to give `decode` the `file_name` argument this time, no need to pass anything else!
+value = compaqt.decode(file_name=file_name)
+```
+
+For more advanced streaming functionality, we can use the `StreamEncoder` and `StreamDecoder` classes. These support incremental reading and writing, and internally use chunk processing to optimize memory usage.
+
+Apart from serialization, if we need to be sure that some bytes are valid, we can verify the validity of them using the `validate` method. This supports both direct verification and through streaming, and for streaming also supports all advanced file management features from the `StreamEncoder` and `StreamDecoder` objects. This method also has *optional* chunk processing when streaming (chunk processing is not possible with direct usage).
+
+
+For further usage details and basic examples on the usage of this library, please consult the [USAGE](https://github.com/svenboertjens/compaqt/blob/main/USAGE.md).
+
+
 ## Installation
 
 To install this module for Python, simply run this:
 `pip install compaqt`
 
+This library automatically detects big-endian systems and applies endianness conversions to keep data valid across architectures. If you're using a big-endian system but do not want the endianness conversions for whatever reason, set the enviroment variable `SET_LITTLE_ENDIAN` before installing the library. As per tests, these conversions bring no noticeable performance losses as they typically use intrinsics (for GCC/Clang and MSVC).
 
-## About this serializer
+The setup also attempts to detect if the system requires strict aliasing for copying and writing data. If your system has this requirement but is not detected by the setup script, or if you want strict aliasing anyway, set the environment variable `SET_STRICT_ALIGNMENT` before installation. This enforces strict aliasing in the module.
 
-`Compaqt` is a serializer designed to strike a balance between compact data representation and performance. According to benchmarks compared to other existing serialization methods, this one performs well in both compactness and (de-)serialization speed.
+Setting environment variables is done as follows:
+- On Unix: `export <VARIABLE_NAME>=1`
+- On Windows: `set <VARIABLE_NAME>=1`
 
-In an attempt to keep the memory usage low, Compaqt attempts to predict how much memory to allocate before serializing data, by dynamically learning based on previously received data. This is to avoid over-allocating memory by large amounts, while also reducing re-allocations. This - besides the lower memory footprint - also enhances performance due to the ease of upfront allocation and minimal re-allocations during the process.
-
-The serializer currently supports the following datatypes:
-- bytes
-- str
-- int
-- float
-- complex
-- bool
-- NoneType
-- list
-- dict
-
-
-## Usage
-
-Encoding (serializing):
-```python
-# The value we want to encode
-value = {
-    'Hello,': 'world!',
-    'this is a': ['test', 'value']
-}
-
-# Call the `encode` method to encode the value
-encoded = compaqt.encode(value)
-
-# Now, `encoded` contains the value serialized to bytes
-```
-
-Decoding (de-serializing):
-```python
-# Our encoded value (generated by the encode method)
-encoded = b'...'
-
-# call the `decode` method to decode the value
-value = compaqt.decode(encoded)
-
-# Now, `value` contains the original value
-```
-
-For further usage, see [USAGE](https://github.com/svenboertjens/compaqt/blob/main/USAGE.md).
+So if we want to enforce aliasing for example, we can do so like this:
+- On Unix: `export SET_STRICT_ALIGNMENT=1 && pip install compaqt`
+- On Windows: `set SET_STRICT_ALIGNMENT=1 && pip install compaqt`
 
 
 ## License

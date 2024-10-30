@@ -2,6 +2,7 @@
 
 #include <Python.h>
 #include "metadata.h"
+#include "exceptions.h"
 
 #define OVERREAD_CHECK(length) do { \
     if (b->offset + length > b->allocated) return 1; \
@@ -39,15 +40,16 @@ static inline int _validate(buffer_t *b, FILE *file)
         default: return 1;
         }
     }
-    case DT_ARRAY: // Combine the two container types as all values are processed the same anyway.
-    case DT_DICTN: // Multiply dict number of items by 2 as it has pairs, so double the num items
+    case DT_ARRAY: // Combine the two container types as they're processed the same
+    case DT_DICTN:
     {
         size_t num_items = 0;
         RD_METADATA(b->msg, b->offset, num_items);
         OVERREAD_CHECK(0);
 
+        // Multiply dict number of items by 2 as it has pairs
         if (dt_mask == DT_DICTN)
-            num_items <<= 1;
+            num_items *= 2;
 
         for (size_t i = 0; i < num_items; ++i)
             if (_validate(b, file) == 1) return 1;
@@ -55,7 +57,23 @@ static inline int _validate(buffer_t *b, FILE *file)
         return 0;
     }
     case DT_EXTND:
-    case DT_NOUSE: return 1; // Not supported yet, so currently means invalid
+    {
+        ++(b->offset);
+        OVERREAD_CHECK(1);
+
+        const size_t num_bytes = *(b->msg + b->offset++) & 0xFF;
+        OVERREAD_CHECK(num_bytes);
+
+        size_t length = 0;
+        memcpy(&length, b->msg + b->offset, num_bytes);
+        b->offset += num_bytes;
+
+        OVERREAD_CHECK(length);
+        b->offset += length;
+
+        return 0;
+    }
+    case DT_NOUSE: return 1; // Not in use, so this would mean invalid
     default:
     {
         // All other cases use VLE metadata, so read length and increment offset using it
@@ -102,7 +120,7 @@ PyObject *validate(PyObject *self, PyObject *args, PyObject *kwargs)
 
         if (fseek(file, file_offset, SEEK_SET) != 0)
         {
-            PyErr_Format(PyExc_FileNotFoundError, "Unable to find position %zu of file '%s'", file_offset, filename);
+            PyErr_Format(FileOffsetError, "Unable to find position %zu of file '%s'", file_offset, filename);
             return NULL;
         }
 
@@ -132,7 +150,7 @@ PyObject *validate(PyObject *self, PyObject *args, PyObject *kwargs)
         Py_RETURN_FALSE;
     else
     {
-        PyErr_SetString(PyExc_ValueError, "The received object does not appear to be valid");
+        PyErr_SetString(ValidationError, "The received object does not appear to be valid");
         return NULL;
     }
 }

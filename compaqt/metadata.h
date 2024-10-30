@@ -6,8 +6,11 @@
 #include <Python.h>
 
 // These macros will be overwritten by the setup.py if needed
-#define IS_LITTLE_ENDIAN 1 // Whether the system is little-endian
-#define STRICT_ALIGNMENT 0 // Whether to use strict alignment
+#ifndef IS_LITTLE_ENDIAN
+
+    #define IS_LITTLE_ENDIAN 1 // Whether the system is little-endian
+
+#endif // IS_LITTLE_ENDIAN
 
 // Default chunk size is 256KB
 #define DEFAULT_CHUNK_SIZE 1024*256

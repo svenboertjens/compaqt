@@ -8,13 +8,7 @@ import os
 macros = []
 
 if sys.byteorder != "little" and not os.environ.get("SET_LITTLE_ENDIAN"):
-    macros.append(("IS_LITTLE_ENDIAN", 0))
-
-if os.environ.get("SET_STRICT_ALIGNMENT") or platform.machine().strip().strip('_').lower().startswith("arm"):
-    macros.append(("STRICT_ALIGNMENT", 1))
-
-if os.environ.get("SET_EXPERIMENTAL"):
-    macros.append(("EXPERIMENTAL_METHODS", 1))
+    macros.append(("IS_LITTLE_ENDIAN", 0)) # 1 by default
 
 ext_modules = [
     Extension(
@@ -22,6 +16,7 @@ ext_modules = [
         sources=[
             'compaqt/compaqt.c',
             'compaqt/metadata.c',
+            'compaqt/exceptions.c',
             
             'compaqt/main/serialization.c',
             'compaqt/main/regular.c',

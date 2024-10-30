@@ -3,12 +3,13 @@
 #include "main/conversion.h"
 #include "types/custom.h"
 
+#include "exceptions.h"
+
 /* ENCODING */
 
 // Check datatype for a container item
-#define DT_CHECK(expected) do { \
-    if (type != &expected) goto mismatch; \
-} while (0)
+#define DT_CHECK(expected) \
+    if (type != &expected) { break; }
 
 // Macro for calling and testing the offset check function
 #define OFFSET_CHECK(length) do { \
@@ -79,7 +80,9 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
     }
     case 'N': // NoneType
     {
-        if (item != Py_None) goto mismatch;
+        if (item != Py_None)
+            break;
+        
         OFFSET_CHECK(1);
         
         *(b->msg + b->offset++) = DT_NONTP;
@@ -118,7 +121,7 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
     }
     }
 
-    mismatch:
+    // Check for custom types
     return encode_custom(b, item, custom_ob, offset_check);
 }
 
@@ -483,6 +486,7 @@ PyObject *decode_item(buffer_t *b, custom_types_rd_ob *custom_ob, buffer_check_t
     }
     }
 
+    // See if it's a custom type (returns NULL if not)
     return decode_custom(b, custom_ob, overread_check);
 }
 

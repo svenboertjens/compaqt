@@ -2,7 +2,8 @@
 
 #include <Python.h>
 #include "metadata.h"
-#include "serialization.h"
+#include "main/serialization.h"
+#include "exceptions.h"
 
 /* ENCODING */
 
@@ -34,7 +35,7 @@ static inline int offset_check(buffer_t *b, const size_t length)
     return 0;
 }
 
-static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *type, custom_types_wr_ob *custom_ob)
+static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *type, custom_types_wr_ob *custom_ob, const int stream_compatible)
 {
     size_t num_items = Py_SIZE(cont);
     size_t initial_alloc;
@@ -51,7 +52,16 @@ static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *ty
             return 1;
         }
 
-        WR_METADATA(b->msg, b->offset, DT_ARRAY, num_items);
+        if (stream_compatible == 0)
+        {
+            WR_METADATA(b->msg, b->offset, DT_ARRAY, num_items);
+        }
+        else
+        {
+            // Write LM2 metadata if it needs to be streaming compatible
+            WR_METADATA_LM2_MASK(b->msg, b->offset, DT_ARRAY, 8);
+            WR_METADATA_LM2(b->msg, b->offset, num_items, 8);
+        }
 
         for (size_t i = 0; i < num_items; ++i)
             if (encode_item((buffer_t *)b, PyList_GET_ITEM(cont, i), custom_ob, offset_check) == 1) return 1;
@@ -69,7 +79,16 @@ static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *ty
             return 1;
         }
 
-        WR_METADATA(b->msg, b->offset, DT_DICTN, num_items);
+        if (stream_compatible == 0)
+        {
+            WR_METADATA(b->msg, b->offset, DT_DICTN, num_items);
+        }
+        else
+        {
+            // Write LM2 metadata if it needs to be streaming compatible
+            WR_METADATA_LM2_MASK(b->msg, b->offset, DT_DICTN, 8);
+            WR_METADATA_LM2(b->msg, b->offset, num_items, 8);
+        }
 
         num_items <<= 1;
 
@@ -93,10 +112,11 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     PyObject *value;
     char *filename = NULL;
     custom_types_wr_ob *custom_ob = NULL;
+    int stream_compatible = 0;
 
-    static char *kwlist[] = {"value", "file_name", "custom_types", NULL};
+    static char *kwlist[] = {"value", "file_name", "custom_types", "stream_compatible", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sO!", kwlist, &value, &filename, &custom_types_wr_t, &custom_ob))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sO!i", kwlist, &value, &filename, &custom_types_wr_t, &custom_ob, &stream_compatible))
         return NULL;
     
     encode_t b;
@@ -110,7 +130,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     if (type == &PyList_Type || type == &PyDict_Type)
     {
         // This manages the initial buffer allocation itself
-        if (encode_container(&b, value, type, custom_ob) == 1)
+        if (encode_container(&b, value, type, custom_ob, stream_compatible) == 1)
         {
             free(b.msg);
             return NULL;
@@ -161,7 +181,7 @@ static inline int overread_check(buffer_t *b, const size_t length)
 {
     if (b->offset + length > b->allocated)
     {
-        PyErr_SetString(PyExc_ValueError, "Received an invalid or corrupted bytes string");
+        PyErr_SetString(DecodingError, "Received an invalid or corrupted bytes string");
         return 1;
     }
 
@@ -206,7 +226,7 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
         // Get the length of the file
         if (fseek(file, 0, SEEK_END) != 0)
         {
-            PyErr_Format(PyExc_FileNotFoundError, "Unable to find the end of file '%s'", filename);
+            PyErr_Format(FileOffsetError, "Unable to find the end of file '%s'", filename);
             fclose(file);
             return NULL;
         }
@@ -217,7 +237,7 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
         // Go back to the start of the file to read its contents
         if (fseek(file, 0, SEEK_SET) != 0)
         {
-            PyErr_Format(PyExc_FileNotFoundError, "Unable to find the start of file '%s'", filename);
+            PyErr_Format(FileOffsetError, "Unable to find the start of file '%s'", filename);
             fclose(file);
             return NULL;
         }

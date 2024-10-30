@@ -13,6 +13,7 @@ def benchmark(value):
 
 print(f"Iterations: {iterations}")
 
+benchmark([1.23, 4.56, 7.89])
 benchmark(['Hello', 'world!', 'test', 'value', '123', '456'])
 benchmark({1: 'item', 'key': 'val', b'C': 'Python'})
 

@@ -2,7 +2,6 @@
 #define STREAM_H
 
 #include <Python.h>
-#include "metadata.h"
 
 extern PyTypeObject stream_encoder_t;
 extern PyTypeObject stream_decoder_t;

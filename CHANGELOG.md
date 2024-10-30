@@ -3,6 +3,14 @@
 All changes to the `compaqt` module are documented here.
 
 
+## [0.5.0] - 2024-10-30
+
+### Updates:
+- Custom type support;
+- Better safety handling (strict aliasing policies)
+- Improve setup/compile speed;
+
+
 ## [0.4.5] - 2024-10-24
 
 ### Updates:

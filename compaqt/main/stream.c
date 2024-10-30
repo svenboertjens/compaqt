@@ -2,7 +2,8 @@
 
 #include <Python.h>
 #include "metadata.h"
-#include "serialization.h"
+#include "main/serialization.h"
+#include "exceptions.h"
 
 // Stream object class
 typedef struct {
@@ -183,7 +184,7 @@ static PyObject *update_encoder(stream_encoder_ob *stream_obj, PyObject *args, P
 
     if (fseek(s->file, s->stream_offset + 1, SEEK_SET) != 0)
     {
-        PyErr_Format(PyExc_FileNotFoundError, "Unable to set the file offset to %zu\n", s->stream_offset);
+        PyErr_Format(FileOffsetError, "Unable to set the file offset to %zu\n", s->stream_offset);
         fclose(s->file);
         return NULL;
     }
@@ -332,7 +333,7 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
 
         if (fseek(file, stream_offset, SEEK_SET) != 0)
         {
-            PyErr_Format(PyExc_FileNotFoundError, "Unable to set the file offset to %zu\n", stream_offset);
+            PyErr_Format(FileOffsetError, "Unable to set the file offset to %zu\n", stream_offset);
             fclose(file);
             free(s);
             return NULL;
@@ -342,7 +343,7 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
         char buf[9];
         if (fread(buf, 9, 1, file) == 0)
         {
-            PyErr_Format(PyExc_FileNotFoundError, "Failed to read the file from offset %zu", stream_offset);
+            PyErr_Format(FileOffsetError, "Failed to read the file from offset %zu", stream_offset);
             fclose(file);
             free(s);
             return NULL;
@@ -399,7 +400,7 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
             // Set the file to the received stream offset to follow
             if (fseek(file, stream_offset, SEEK_SET) != 0)
             {
-                PyErr_Format(PyExc_FileNotFoundError, "Unable to set the file offset to %zu\n", (size_t)stream_offset);
+                PyErr_Format(FileOffsetError, "Unable to set the file offset to %zu\n", (size_t)stream_offset);
                 fclose(file);
                 free(s);
                 return NULL;
@@ -476,7 +477,7 @@ static inline int refresh_chunk(stream_t *s)
     // Go to the reading point of the file
     if (fseek(s->file, s->stream_offset, SEEK_SET) != 0)
     {
-        PyErr_Format(PyExc_FileNotFoundError, "Failed to open the file at offset %zu", s->stream_offset);
+        PyErr_Format(FileOffsetError, "Failed to open the file at offset %zu", s->stream_offset);
         return 1;
     }
 
@@ -484,7 +485,7 @@ static inline int refresh_chunk(stream_t *s)
     // It doesn't matter that this overrides the user value, as the end of the file is reached and thus only the smaller chunk size is needed
     if ((s->allocated = fread(s->msg, 1, s->allocated, s->file)) == 0)
     {
-        PyErr_Format(PyExc_FileNotFoundError, "Failed to read the file from offset %zu", s->stream_offset);
+        PyErr_Format(FileOffsetError, "Failed to read the file from offset %zu", s->stream_offset);
         return 1;
     }
 
@@ -634,7 +635,7 @@ static PyObject *update_decoder(stream_decoder_ob *stream_obj, PyObject *args, P
     // Go to the current stream offset to read from where we left off
     if (fseek(s->file, s->stream_offset, SEEK_SET) != 0)
     {
-        PyErr_Format(PyExc_FileNotFoundError, "Failed to open the file at offset %zu", s->stream_offset);
+        PyErr_Format(FileOffsetError, "Failed to open the file at offset %zu", s->stream_offset);
         fclose(s->file);
         return NULL;
     }
@@ -642,7 +643,7 @@ static PyObject *update_decoder(stream_decoder_ob *stream_obj, PyObject *args, P
     // Copy the first chunk into the message buffer
     if (fread(s->msg, 1, s->allocated, s->file) == 0)
     {
-        PyErr_Format(PyExc_FileNotFoundError, "Failed to read the file from offset %zu", s->stream_offset);
+        PyErr_Format(FileOffsetError, "Failed to read the file from offset %zu", s->stream_offset);
         fclose(s->file);
         return NULL;
     }
@@ -765,7 +766,7 @@ PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
 
     if (fseek(file, stream_offset, SEEK_SET) != 0)
     {
-        PyErr_Format(PyExc_FileNotFoundError, "Unable to set the file offset to offset %zu\n", stream_offset);
+        PyErr_Format(FileOffsetError, "Unable to set the file offset to offset %zu\n", stream_offset);
         fclose(file);
         free(s);
         return NULL;
@@ -775,7 +776,7 @@ PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
     char buf[9];
     if (fread(buf, 9, 1, file) == 0)
     {
-        PyErr_Format(PyExc_FileNotFoundError, "Failed to read the file from offset %zu", stream_offset);
+        PyErr_Format(FileOffsetError, "Failed to read the file from offset %zu", stream_offset);
         fclose(file);
         free(s);
         return NULL;

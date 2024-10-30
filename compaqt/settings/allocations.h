@@ -2,7 +2,6 @@
 #define ALLOCATIONS_H
 
 #include <Python.h>
-#include "metadata.h"
 
 PyObject *manual_allocations(PyObject *self, PyObject *args);
 PyObject *dynamic_allocations(PyObject *self, PyObject *args, PyObject *kwargs);

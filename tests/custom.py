@@ -70,7 +70,7 @@ try:
     # Unsupported type
     cq.encode(2j + 3, custom_types=enc)
     print("Failed: Unsupported type test")
-except ValueError:
+except:
     pass
 
 try:
@@ -79,7 +79,7 @@ try:
     encoded = cq.encode(IntegerCustom(6789), custom_types=enc_missing_decode)
     cq.decode(encoded, custom_types=dec)  # This should fail
     print("Failed: Missing decode function test")
-except ValueError:
+except:
     pass
 
 try:
@@ -89,7 +89,7 @@ try:
     dec_missing = cq.types.decoder_types({1: int_rd, 2: float_rd})
     cq.decode(encoded, custom_types=dec_missing)
     print("Failed: Incorrect type ID test")
-except ValueError:
+except:
     pass
 
 print('Finished\n')

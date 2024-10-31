@@ -7,7 +7,9 @@ All changes to the `compaqt` module are documented here.
 
 ### Updates:
 - Custom type support;
-- Better safety handling (strict aliasing policies)
+    * Serialize data with custom types, not supported by default;
+    * Separate functions for serializing and de-serializing per custom type;
+- Better safety handling (strict alignment policies);
 - Improve setup/compile speed;
 
 

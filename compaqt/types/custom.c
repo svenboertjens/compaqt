@@ -7,13 +7,25 @@ typedef struct {
     PyObject_HEAD
     PyTypeObject **types; // The actual types of the values
     PyObject **writes;    // The write functions of the types
+    uint8_t *ptr_idxs;    // The actual assigned indexes per type
+    uint8_t amt;          // The amount of types
 } custom_types_wr_ob;
 
 typedef struct {
     PyObject_HEAD
-    // No types list is necessary as indexing the read function is done based on metadata in encoded data
     PyObject **reads; // The read functions of the types
 } custom_types_rd_ob;
+
+/*
+  The write object stores only the used types to limit
+  memory usage and the iterations needed for matching a
+  custom type.
+
+  The read object allocates the full 32 slots and sets
+  the unused slots to NULL to allow fast index-based
+  access after reading the index from the metadata.
+
+*/
 
 /* OBJECT CREATION */
 
@@ -24,18 +36,15 @@ typedef struct {
 void custom_types_wr_dealloc(custom_types_wr_ob *self)
 {
     // Decref all types and functions stored 
-    for (size_t i = 0; i < MAX_TYPE_IDX; ++i)
+    for (int i = 0; i < self->amt; ++i)
     {
-        // Only if not NULL as not all indexes have to be used
-        if (self->types[i] != NULL)
-        {
-            Py_DECREF(self->types[i]);
-            Py_DECREF(self->writes[i]);
-        }
+        Py_DECREF(self->types[i]);
+        Py_DECREF(self->writes[i]);
     }
 
     free(self->types);
     free(self->writes);
+    free(self->ptr_idxs);
 
     if (Py_TYPE(self)->tp_free)
         Py_TYPE(self)->tp_free((PyObject *)self);
@@ -78,39 +87,46 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
 
     if (!PyArg_ParseTuple(args, "O!", &PyDict_Type, &data))
         return NULL;
+    
+    // Number of custom types
+    const size_t amt = PyDict_GET_SIZE(data);
+
+    if (amt > MAX_CUSTOM_TYPES)
+    {
+        PyErr_Format(PyExc_ValueError, "Only up to 32 custom types are allowed, got a dict with %zu pairs", amt);
+        return NULL;
+    }
 
     custom_types_wr_ob *ob = PyObject_New(custom_types_wr_ob, &custom_types_wr_t);
 
     if (ob == NULL)
         return PyErr_NoMemory();
 
-    // Allocate space for the number of total types for the index-based approach
-    ob->types = (PyTypeObject **)malloc(sizeof(PyTypeObject *) * MAX_CUSTOM_TYPES);
+    // Allocate 1 byte per type for the indexes as those are stored per byte (as idxs range from 0-31)
+    ob->ptr_idxs = (uint8_t *)malloc(amt);
+    
+    // The space to allocate for the pointers
+    const size_t ptr_alloc_size = sizeof(void *) * amt;
 
-    if (ob->types == NULL)
+    // Allocate space for the type and function pointers
+    ob->types = (PyTypeObject **)malloc(ptr_alloc_size);
+    ob->writes = (PyObject **)malloc(ptr_alloc_size);
+
+    if (ob->ptr_idxs == NULL || ob->types == NULL || ob->writes == NULL)
     {
+        // Freeing is done by the dealloc function
         Py_DECREF(ob);
         return PyErr_NoMemory();
     }
-
-    ob->writes = (PyObject **)malloc(sizeof(PyObject *) * MAX_CUSTOM_TYPES);
-
-    if (ob->writes == NULL)
-    {
-        Py_DECREF(ob);
-        return PyErr_NoMemory();
-    }
-
-    // Initialize all pointers with NULL to keep unused ones as NULL
-    memset(ob->types, 0, sizeof(PyTypeObject *) * MAX_CUSTOM_TYPES);
-    memset(ob->writes, 0, sizeof(PyObject *) * MAX_CUSTOM_TYPES);
     
     PyObject *idx;
     PyObject *tuple;
     Py_ssize_t pos = 0;
 
-    while (PyDict_Next(data, &pos, &idx, &tuple))
+    for (int i = 0; i < amt; ++i)
     {
+        PyDict_Next(data, &pos, &idx, &tuple);
+
         if (!PyLong_Check(idx))
         {
             PyErr_Format(PyExc_ValueError, "Expected a key of type 'int', got '%s'", Py_TYPE(idx)->tp_name);
@@ -126,6 +142,8 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
             Py_DECREF(ob);
             return NULL;
         }
+
+        ob->ptr_idxs[i] = ptr_idx;
 
         if (!PyTuple_Check(tuple) || PyTuple_GET_SIZE(tuple) != 2)
         {
@@ -166,8 +184,8 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
         Py_INCREF(type);
 
         // Assign the write function and type to their respective index
-        ob->types[ptr_idx] = ((PyTypeObject *)type);
-        ob->writes[ptr_idx] = func;
+        ob->types[i] = ((PyTypeObject *)type);
+        ob->writes[i] = func;
     }
 
     return (PyObject *)ob;
@@ -185,15 +203,14 @@ PyObject *get_custom_types_rd(PyObject *self, PyObject *args)
     if (ob == NULL)
         return PyErr_NoMemory();
 
-    ob->reads = (PyObject **)malloc(sizeof(PyObject *) * MAX_CUSTOM_TYPES);
+    // Allocate with calloc to set unused values to NULL
+    ob->reads = (PyObject **)calloc(MAX_CUSTOM_TYPES, sizeof(PyObject *));
 
     if (ob->reads == NULL)
     {
         Py_DECREF(ob);
         return PyErr_NoMemory();
     }
-
-    memset(ob->reads, 0, sizeof(PyObject *) * MAX_CUSTOM_TYPES);
     
     PyObject *idx;
     PyObject *func;
@@ -239,7 +256,7 @@ int encode_custom(buffer_t *b, PyObject *value, custom_types_wr_ob *ob, buffer_c
     PyTypeObject *type = Py_TYPE(value);
 
     // Iterate over all types to see if it's in the types list
-    for (size_t i = 0; i < MAX_CUSTOM_TYPES; ++i)
+    for (size_t i = 0; i < ob->amt; ++i)
     {
         if (ob->types[i] == type)
         {
@@ -265,7 +282,7 @@ int encode_custom(buffer_t *b, PyObject *value, custom_types_wr_ob *ob, buffer_c
             offset_check(b, length + MAX_METADATA_SIZE);
 
             // Write the extension mask along with the index above it
-            *(b->msg + b->offset++) = DT_EXTND | (i << 3);
+            *(b->msg + b->offset++) = DT_EXTND | (ob->ptr_idxs[i] << 3);
 
             // Separate case if length is zero
             if (length == 0)

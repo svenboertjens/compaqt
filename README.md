@@ -55,10 +55,10 @@ value = compaqt.decode(file_name=file_name)
 
 For more advanced streaming functionality, we can use the `StreamEncoder` and `StreamDecoder` classes. These support incremental reading and writing, and internally use chunk processing to optimize memory usage.
 
-Apart from serialization, if we need to be sure that some bytes are valid, we can verify the validity of them using the `validate` method. This supports both direct verification and through streaming, and for streaming also supports all advanced file management features from the `StreamEncoder` and `StreamDecoder` objects. This method also has *optional* chunk processing when streaming (chunk processing is not possible with direct usage).
+Apart from serialization, if we need to be sure that some bytes are valid, we can verify the validity of them using the `validate` method. This supports both direct verification and through streaming, and for streaming also supports all advanced file management features from the `StreamEncoder` and `StreamDecoder` objects. This method also has *optional* chunk processing when streaming.
 
 
-For further usage details and basic examples on the usage of this library, please consult the [USAGE](https://github.com/svenboertjens/compaqt/blob/main/USAGE.md).
+For further details on how to use this library, please consult the [USAGE](https://github.com/svenboertjens/compaqt/blob/main/USAGE.md).
 
 
 ## Installation
@@ -68,15 +68,13 @@ To install this module for Python, simply run this:
 
 This library automatically detects big-endian systems and applies endianness conversions to keep data valid across architectures. If you're using a big-endian system but do not want the endianness conversions for whatever reason, set the enviroment variable `SET_LITTLE_ENDIAN` before installing the library. As per tests, these conversions bring no noticeable performance losses as they typically use intrinsics (for GCC/Clang and MSVC).
 
-The setup also attempts to detect if the system requires strict aliasing for copying and writing data. If your system has this requirement but is not detected by the setup script, or if you want strict aliasing anyway, set the environment variable `SET_STRICT_ALIGNMENT` before installation. This enforces strict aliasing in the module.
-
 Setting environment variables is done as follows:
 - On Unix: `export <VARIABLE_NAME>=1`
 - On Windows: `set <VARIABLE_NAME>=1`
 
 So if we want to enforce aliasing for example, we can do so like this:
-- On Unix: `export SET_STRICT_ALIGNMENT=1 && pip install compaqt`
-- On Windows: `set SET_STRICT_ALIGNMENT=1 && pip install compaqt`
+- On Unix: `export SET_LITTLE_ENDIAN=1 && pip install compaqt`
+- On Windows: `set SET_LITTLE_ENDIAN=1 && pip install compaqt`
 
 
 ## License
@@ -86,5 +84,5 @@ This project is licensed under the BSD-3-Clause License. See the [LICENSE](https
 
 ## Contact
 
-Feel free to reach out via the GitHub repository of this module ([github](https://github.com/svenboertjens/compaqt.git)) or reach out by mail ([Sven Boertjens](mailto:boertjens.sven@gmail.com)).
+Feel free to reach out via the [GitHub repo](https://github.com/svenboertjens/compaqt.git) of this module or reach out by [mail](mailto:boertjens.sven@gmail.com).
 

@@ -41,7 +41,126 @@ These datatypes are supported by Compaqt:
 
 ### Custom types
 
-Unfortunately, `compaqt` does not support custom datatypes yet. This feature is listed as a to-do.
+Custom types can be used to handle data of types not supported by Compaqt itself. To use custom types, we can create an object that'll hold the function to call per custom type along with its assigned ID.
+
+The objects needed for encoding data is separate from the object for decoding, as this approach significantly benefits memory usage.
+
+The methods used to create custom type objects are located in `compaqt.types`.
+
+
+#### Custom Write Types
+
+The `CustomWriteTypes` is used for encoding custom types.
+
+```python
+types.encoder_types(custom_types: {int: (type, function)}) -> CustomWriteTypes
+```
+
+* `custom_types`:
+A dict that holds the custom types, the functions to encode them, and their ID. This dict is structured as follows:
+
+```python
+custom_types = {
+    ID_1: (type1, function1),
+    ID_2: (type2, function2),
+    ...
+}
+```
+
+The ID is the key in the dict, and the value belonging to the ID should be a tuple that contains the custom type you want to use, and the function used to encode that data.
+
+The type and function in the tuple are interchangeable, so it doesn't matter if the type or the function is placed first.
+
+The function for encoding the value will receive the value of the custom type (which has been type checked for you before calling), and should return a bytes object of the value that will later be used to decode the value in your decode function.
+
+
+#### Custom Read Types
+
+The `CustomReadTypes` is used for decoding custom types.
+
+```python
+types.decoder_types(custom_types: {int: function}) -> CustomReadTypes
+```
+
+* `custom_types`:
+A dict that holds the functions to decode the custom types and the ID you previously assigned to the type in your `CustomWriteTypes` object. This dict is structured as follows:
+
+```python
+custom_types = {
+    ID_1: function1,
+    ID_2: function2,
+    ...
+}
+```
+
+The ID is the key in the dict, and the value paired to the ID is the function used to decode the encoded value of your custom type.
+
+The function for encoding the value will receive the bytes as they were encoded by the custom encode function. The function should return the value however you want it, it doesn't have to be the exact custom type if that's not your goal.
+
+* Note: The ID that was used for a custom type in `CustomWriteTypes` **has** to be the same ID as used in the `CustomReadTypes`. Otherwise, functions won't receive the correct data, or the encoded data might be seen as invalid, throwing an error.
+
+
+#### Custom types example
+
+If the above explanations were not fully clear, here's a code example on how to use custom types:
+
+```python
+import compaqt
+
+# This is the custom type we want to serialize
+class CustomString:
+    
+    def __init__(self, value: str):
+        self.value = value
+
+# This is how the function for serializing this custom type would look:
+def encode_CustomString(obj: CustomString):
+    # The `value` of the custom type is all we want to save here,
+    # so return that as bytes:
+    
+    return obj.value.encode()
+
+# Create a custom types object for encoding to use our custom type:
+encode_types = compaqt.types.encoder_types({
+    0: (CustomString, encode_CustomString)
+})
+
+# This is the value we want to serialize
+value = [
+    CustomString('abcde'),
+    CustomString('12345')
+]
+
+# Serialize the value, passing the custom types object along
+encoded = compaqt.encode(value, custom_types=encode_types)
+
+
+# Now, we want to decode the value again. But just passing this object
+# to the `decode` method will cause issues. So we have to create
+# a custom types object for decoding, with our own decode function.
+
+
+# This is the function for decoding our custom type:
+def decode_CustomString(data: bytes):
+    # The `data` variable holds the string we previously encoded in our
+    # custom encode function for the CustomString type. We want to get
+    # a CustomString object back, so decode `data` and create a CustomString:
+    
+    value = data.decode()
+    return CustomString(value)
+
+# Create a custom types object for de-serializing the encoded data:
+decode_types = compaqt.types.decoder_types({
+    # Use the same ID as before to correctly identify it
+    0: decode_CustomString
+})
+
+# De-serialize the encoded data to get our value back:
+decoded = compaqt.decode(encoded, custom_types=decode_types)
+
+
+# Now, `decoded` holds the exact same as `value` holds, using our custom type!
+```
 
 
 ## Basic serialization

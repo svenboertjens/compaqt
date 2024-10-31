@@ -109,15 +109,54 @@ static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *ty
 
 PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-    PyObject *value;
+    /* CUSTOM ARG PARSING */
+
+    if (PyTuple_GET_SIZE(args) != 1)
+    {
+        if (PyTuple_GET_SIZE(args) == 0)
+            PyErr_SetString(PyExc_ValueError, "Expected at least the 'value' argument");
+        else
+            PyErr_SetString(PyExc_ValueError, "Only the 'value' argument can be non-keyword");
+
+        return NULL;
+    }
+
     char *filename = NULL;
     custom_types_wr_ob *custom_ob = NULL;
     int stream_compatible = 0;
 
-    static char *kwlist[] = {"value", "file_name", "custom_types", "stream_compatible", NULL};
+    if (kwargs != NULL)
+    {
+        PyObject *py_filename = PyDict_GetItemString(kwargs, "file_name");
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sO!i", kwlist, &value, &filename, &custom_types_wr_t, &custom_ob, &stream_compatible))
-        return NULL;
+        if (py_filename != NULL)
+        {
+            if (!PyUnicode_Check(py_filename))
+            {
+                PyErr_Format(PyExc_ValueError, "The 'file_name' argument must be of type 'str', got '%s'", Py_TYPE(py_filename)->tp_name);
+                return NULL;
+            }
+
+            filename = PyUnicode_AsUTF8(py_filename);
+        }
+
+        custom_ob = (custom_types_wr_ob *)PyDict_GetItemString(kwargs, "custom_types");
+
+        if (custom_ob != NULL && Py_TYPE(custom_ob) != &custom_types_wr_t)
+        {
+            PyErr_Format(PyExc_ValueError, "The 'custom_types' argument must be of type 'compaqt.CustomWriteTypes', got '%s'", Py_TYPE(custom_ob)->tp_name);
+            return NULL;
+        }
+
+        PyObject *py_stream_compatible = PyDict_GetItemString(kwargs, "stream_compatible");
+
+        if (py_stream_compatible != NULL && Py_IsTrue(py_stream_compatible))
+            stream_compatible = 1;
+    }
+
+    PyObject *value = PyTuple_GET_ITEM(args, 0);
+
+    /* END OF CUSTOM PARSING */
     
     encode_t b;
 
@@ -139,6 +178,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     else
     {
         // Set the message to NULL and 0 allocation space to let `encode_item` handle the initial alloc using its overwrite checks
+        // Realloc accepts NULL and will treat it as a malloc call
         b.msg = NULL;
         b.allocated = 0;
 
@@ -190,14 +230,54 @@ static inline int overread_check(buffer_t *b, const size_t length)
 
 PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
+    /* CUSTOM ARG PARSING */
+
     PyObject *value = NULL;
     char *filename = NULL;
     custom_types_rd_ob *custom_ob = NULL;
 
-    static char *kwlist[] = {"value", "file_name", "custom_types", NULL};
+    if (PyTuple_GET_SIZE(args) == 1)
+    {
+        value = PyTuple_GET_ITEM(args, 0);
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|O!sO!", kwlist, &PyBytes_Type, &value, &filename, &custom_types_rd_t, &custom_ob))
-        return NULL;
+        if (!PyBytes_Check(value))
+        {
+            PyErr_Format(PyExc_ValueError, "The 'encoded' argument must be of type 'bytes', got '%s'", Py_TYPE(value)->tp_name);
+            return NULL;
+        }
+    }
+
+    if (kwargs != NULL)
+    {
+        if (value == NULL)
+        {
+            PyObject *py_filename = PyDict_GetItemString(kwargs, "file_name");
+
+            if (py_filename == NULL)
+            {
+                PyErr_SetString(PyExc_ValueError, "Expected either the 'encoded' or 'file_name' argument, got neither");
+                return NULL;
+            }
+            
+            if (!PyUnicode_Check(py_filename))
+            {
+                PyErr_Format(PyExc_ValueError, "The 'file_name' argument must be of type 'str', got '%s'", Py_TYPE(py_filename)->tp_name);
+                return NULL;
+            }
+
+            filename = PyUnicode_AsUTF8(py_filename);
+        }
+        
+        custom_ob = (custom_types_rd_ob *)PyDict_GetItemString(kwargs, "custom_types");
+
+        if (custom_ob != NULL && Py_TYPE(custom_ob) != &custom_types_rd_t)
+        {
+            PyErr_Format(PyExc_ValueError, "The 'custom_types' argument must be of type 'compaqt.CustomReadTypes', got '%s'", Py_TYPE(custom_ob)->tp_name);
+            return NULL;
+        }
+    }
+
+    /* END OF CUSTOM PARSING */
     
     buffer_t b;
 

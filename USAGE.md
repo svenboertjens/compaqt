@@ -22,7 +22,7 @@ Here, you can find explanations on how to use `compaqt`.
 
 ## Supported datatypes
 
-A basic overview of the datatypes supported by `compaqt`.
+Compaqt supports most 'default' types, which is sufficient for most use cases. If you need to use other types, you can directly pass them to the serialization methods along with a custom type object (more on those below).
 
 
 ### Standard types
@@ -100,9 +100,9 @@ The function for encoding the value will receive the bytes as they were encoded 
 * Note: The ID that was used for a custom type in `CustomWriteTypes` **has** to be the same ID as used in the `CustomReadTypes`. Otherwise, functions won't receive the correct data, or the encoded data might be seen as invalid, throwing an error.
 
 
-#### Custom types example
+#### Usage example: Custom types
 
-If the above explanations were not fully clear, here's a code example on how to use custom types:
+This example shows how custom types can be used to work with custom types.
 
 ```python
 import compaqt
@@ -165,13 +165,21 @@ decoded = compaqt.decode(encoded, custom_types=decode_types)
 
 ## Basic serialization
 
-This covers the basic serialization methods.
+The basic serialization methods are sufficient for most use cases.
+
+Using advanced serialization methods should be considered when:
+
+- Memory usage is a concern;
+- Data needs to be (de-)serialized incrementally;
+- Using files that require complex setup;
+
+The basic methods are generally easier to use and have less performance overhead due to simplicity.
 
 
 ### Encode
 
 ```python
-encode(value: any, file_name: str=None) -> bytes | None
+encode(value: any, file_name: str=None, stream_compatible: bool=False, custom_types: CustomWriteTypes=None) -> bytes | None
 ```
 
 * `value`:
@@ -186,7 +194,7 @@ Returns the value encoded to bytes if file_name is not given, otherwise returns 
 ### Decode
 
 ```python
-decode(encoded: bytes=None, file_name: str=None) -> any
+decode(encoded: bytes=None, file_name: str=None, custom_types: CustomReadTypes=None) -> any
 ```
 
 * `encoded`:
@@ -425,5 +433,4 @@ The amount of bytes to allocate per item found in a list or dict. One key-value 
 The amount of bytes to allocate as extra space when the currently allocated buffer is insufficient. This size is also added to the initial allocation size when starting an encoding process.
 
 * Note: These values default to the currently set values when not provided.
-
 

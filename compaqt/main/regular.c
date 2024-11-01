@@ -111,6 +111,17 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     /* CUSTOM ARG PARSING */
 
+    /*
+      # Args:
+      - value;
+
+      # Kwargs:
+      - file_name;
+      - stream_compatible;
+      - custom_types;
+
+    */
+
     if (PyTuple_GET_SIZE(args) != 1)
     {
         if (PyTuple_GET_SIZE(args) == 0)
@@ -232,11 +243,21 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     /* CUSTOM ARG PARSING */
 
+    /*
+      # Args:
+      - value; (optional, also supported by kwargs)
+
+      # Kwargs:
+      - file_name;
+      - custom_types;
+
+    */
+
     PyObject *value = NULL;
     char *filename = NULL;
     custom_types_rd_ob *custom_ob = NULL;
 
-    if (PyTuple_GET_SIZE(args) == 1)
+    if (PyTuple_GET_SIZE(args) != 0)
     {
         value = PyTuple_GET_ITEM(args, 0);
 

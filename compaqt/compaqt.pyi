@@ -3,7 +3,7 @@
 class CustomWriteTypes: pass
 class CustomReadTypes: pass
 
-def encode(value: any, file_name: str=None, custom_types: CustomWriteTypes=None) -> bytes | None:
+def encode(value: any, file_name: str=None, stream_compatible: bool=False, custom_types: CustomWriteTypes=None) -> bytes | None:
     """Encode a value to bytes.
     
     Args:
@@ -11,19 +11,6 @@ def encode(value: any, file_name: str=None, custom_types: CustomWriteTypes=None)
     - `file_name`:  The file to write encoded data to. By default doesn't write to a file and returns the bytes as a value.
     
     Returns the value encoded to bytes (if not writing to a file).
-    
-    Usage:
-    >>> encoded = compaqt.encode(any_value)
-    
-    Supported datatypes:
-    - bytes
-    - str
-    - int
-    - float
-    - bool
-    - NoneType
-    - list
-    - dict
     """
     ...
 
@@ -35,9 +22,6 @@ def decode(encoded: bytes=None, file_name: str=None, custom_types: CustomReadTyp
     - `file_name`:  The file to read the data from. Can be given INSTEAD of `encoded`.
     
     Returns the decoded value.
-    
-    Usage:
-    >>> original_value = compaqt.decode(encoded)
     """
     ...
 
@@ -52,9 +36,6 @@ def validate(encoded: bytes=None, file_name: str=None, file_offset: int=0, chunk
     - `err_on_invalid`:  Whether to throw an error if the the value is invalid.
     
     Returns a boolean on whether the encoded object is valid.
-    
-    Usage:
-    >>> is_valid = compaqt.validate(encoded)
     """
     ...
 
@@ -71,9 +52,6 @@ class StreamEncoder:
     - `preserve_file`:  If the current file needs to be preserved and the stream should start at the end of the file. Overrides the `resume_stream` and `file_offset` args.
     
     Returns an Encoding Stream object to update the stream with.
-    
-    Usage:
-    >>> stream = compaqt.StreamEncoder('myFolder/myFile.ext', list)
     """
     
     def __init__(self, file_name: str, value_type: type=list, chunk_size: int=1024*256, custom_types: CustomWriteTypes=None, resume_stream: bool=False, file_offset: int=0, preserve_file: bool=False) -> self:
@@ -96,9 +74,6 @@ class StreamEncoder:
     
     def finalize(self) -> None:
         """Finalize a stream encoder by freeing its internal buffer and invalidating the Stream Encoder object.
-        
-        Usage:
-        >>> stream.finalize()
         """
         ...
 
@@ -112,9 +87,6 @@ class StreamDecoder:
     - `file_offset`:  What file position offset to start the stream at.
     
     Returns a Decoding Stream object to (progressively) read values with.
-    
-    Usage:
-    >>> stream = compaqt.StreamDecoder('myFolder/myFile.ext')
     """
     
     def __init__(self, file_name: str, chunk_size: int=1024*256, custom_types: CustomReadTypes=None, file_offset: int=0) -> self:
@@ -131,17 +103,11 @@ class StreamDecoder:
         - `chunk_size`:    Set the chunk size of the memory chunk. Defaults to the currently set value.
         
         Returns the decoded value.
-        
-        Usage:
-        >>> values = stream.read()
         """
         ...
     
     def finalize(self) -> None:
         """Finalize a stream decoder by freeing its internal buffer and invalidating the Stream Decoder object.
-        
-        Usage:
-        >>> stream.finalize()
         """
         ...
 
@@ -156,9 +122,6 @@ class settings:
         Args:
         - `item_size`:     Bytes to allocate per item.
         - `realloc_size`:  Bytes to allocate when the current allocation is insufficient.
-        
-        Usage:
-        >>> compaqt.settings.manual_allocations(32, 64)
         """
         ...
     
@@ -168,9 +131,6 @@ class settings:
         Args:
         - `item_size`:     Bytes to allocate per item.
         - `realloc_size`:  Bytes to allocate when the current allocation is insufficient.
-        
-        Usage:
-        >>> compaqt.settings.dynamic_allocations(item_size=32, realloc_size=64)
         """
         ...
 

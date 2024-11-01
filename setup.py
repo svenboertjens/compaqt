@@ -1,13 +1,11 @@
-from setuptools import setup, Extension, find_packages
-from setuptools.command.build_ext import build_ext
+from setuptools import setup, Extension
 
-import platform
 import sys
 import os
 
 macros = []
 
-if sys.byteorder != "little" and not os.environ.get("SET_LITTLE_ENDIAN"):
+if sys.byteorder != "little" and os.environ.get("SET_LITTLE_ENDIAN") != '1':
     macros.append(("IS_LITTLE_ENDIAN", 0)) # 1 by default
 
 ext_modules = [
@@ -38,7 +36,7 @@ ext_modules = [
 
 setup(
     name="compaqt",
-    version="0.5.0",
+    version="0.5.1",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",

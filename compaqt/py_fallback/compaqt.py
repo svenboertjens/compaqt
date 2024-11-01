@@ -1,0 +1,1 @@
+# A pure Python fallback will be worked on for version `1.0.0` (which is not yet reached but is on the way)

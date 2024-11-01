@@ -7,7 +7,7 @@ def encode(value: any, file_name: str=None, stream_compatible: bool=False, custo
     """Encode a value to bytes.
     
     Args:
-    - `value`:     The value to encode.
+    - `value`:      The value to encode.
     - `file_name`:  The file to write encoded data to. By default doesn't write to a file and returns the bytes as a value.
     
     Returns the value encoded to bytes (if not writing to a file).
@@ -18,7 +18,7 @@ def decode(encoded: bytes=None, file_name: str=None, custom_types: CustomReadTyp
     """Decode an encoded bytes object back to the original value.
     
     Args:
-    - `encoded`:   The encoded value to decode. Overrides `file_name`.
+    - `encoded`:    The encoded value to decode. Overrides `file_name`.
     - `file_name`:  The file to read the data from. Can be given INSTEAD of `encoded`.
     
     Returns the decoded value.
@@ -30,7 +30,7 @@ def validate(encoded: bytes=None, file_name: str=None, file_offset: int=0, chunk
     
     Args:
     - `encoded`:         The encoded value to validate. Overrides `file_name`.
-    - `file_name`:        The path to the file to read the data from. Can be given INSTEAD of `encoded`.
+    - `file_name`:       The path to the file to read the data from. Can be given INSTEAD of `encoded`.
     - `file_offset`:     The offset in the file to start reading from.
     - `chunk_size`:      The size of the internal buffer to process data in. Zero means the size of the file (starting from the file offset).
     - `err_on_invalid`:  Whether to throw an error if the the value is invalid.

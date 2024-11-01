@@ -122,6 +122,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
 
     */
 
+    // The `value` is the only non-kwarg and has to be given, so arg size should be 1
     if (PyTuple_GET_SIZE(args) != 1)
     {
         if (PyTuple_GET_SIZE(args) == 0)
@@ -136,8 +137,12 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     custom_types_wr_ob *custom_ob = NULL;
     int stream_compatible = 0;
 
+    // Check if we received kwargs
     if (kwargs != NULL)
     {
+        // The amount of kwargs so we can quit if there's no more remaining
+        size_t remaining = PyDict_GET_SIZE(kwargs);
+
         PyObject *py_filename = PyDict_GetItemString(kwargs, "file_name");
 
         if (py_filename != NULL)
@@ -149,6 +154,10 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
             }
 
             filename = PyUnicode_AsUTF8(py_filename);
+
+            // Check if the decremented remaining count is zero, exit if so
+            if (--remaining == 0)
+                goto kwargs_parse_end;
         }
 
         custom_ob = (custom_types_wr_ob *)PyDict_GetItemString(kwargs, "custom_types");
@@ -158,12 +167,17 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
             PyErr_Format(PyExc_ValueError, "The 'custom_types' argument must be of type 'compaqt.CustomWriteTypes', got '%s'", Py_TYPE(custom_ob)->tp_name);
             return NULL;
         }
+        else if (--remaining == 0)
+            goto kwargs_parse_end;
 
         PyObject *py_stream_compatible = PyDict_GetItemString(kwargs, "stream_compatible");
 
         if (py_stream_compatible != NULL && Py_IsTrue(py_stream_compatible))
             stream_compatible = 1;
     }
+
+    // We jump here if all kwargs are parsed
+    kwargs_parse_end:
 
     PyObject *value = PyTuple_GET_ITEM(args, 0);
 
@@ -270,23 +284,41 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 
     if (kwargs != NULL)
     {
+        size_t remaining = PyDict_GET_SIZE(kwargs);
+
         if (value == NULL)
         {
-            PyObject *py_filename = PyDict_GetItemString(kwargs, "file_name");
+            value = PyDict_GetItemString(kwargs, "encoded");
 
-            if (py_filename == NULL)
+            if (value != NULL)
             {
-                PyErr_SetString(PyExc_ValueError, "Expected either the 'encoded' or 'file_name' argument, got neither");
-                return NULL;
+                if (!PyBytes_Check(value))
+                {
+                    PyErr_Format(PyExc_ValueError, "The 'encoded' argument must be of type 'bytes', got '%s'", Py_TYPE(value)->tp_name);
+                    return NULL;
+                }
             }
-            
-            if (!PyUnicode_Check(py_filename))
+            else
             {
-                PyErr_Format(PyExc_ValueError, "The 'file_name' argument must be of type 'str', got '%s'", Py_TYPE(py_filename)->tp_name);
-                return NULL;
+                PyObject *py_filename = PyDict_GetItemString(kwargs, "file_name");
+
+                if (py_filename == NULL)
+                {
+                    PyErr_SetString(PyExc_ValueError, "Expected either the 'encoded' or 'file_name' argument, got neither");
+                    return NULL;
+                }
+                
+                if (!PyUnicode_Check(py_filename))
+                {
+                    PyErr_Format(PyExc_ValueError, "The 'file_name' argument must be of type 'str', got '%s'", Py_TYPE(py_filename)->tp_name);
+                    return NULL;
+                }
+
+                filename = PyUnicode_AsUTF8(py_filename);
             }
 
-            filename = PyUnicode_AsUTF8(py_filename);
+            if (--remaining == 0)
+                goto kwargs_parse_end;
         }
         
         custom_ob = (custom_types_rd_ob *)PyDict_GetItemString(kwargs, "custom_types");
@@ -297,6 +329,8 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
         }
     }
+
+    kwargs_parse_end:
 
     /* END OF CUSTOM PARSING */
     

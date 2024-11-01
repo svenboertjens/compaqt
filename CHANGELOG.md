@@ -3,6 +3,12 @@
 All changes to the `compaqt` module are documented here.
 
 
+## [0.5.1] - 2024-11-01
+
+### Updates:
+- Optimizations in `encode` and `decode` methods;
+
+
 ## [0.5.0] - 2024-10-30
 
 ### Updates:

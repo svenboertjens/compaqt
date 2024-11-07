@@ -1,13 +1,5 @@
 from setuptools import setup, Extension
 
-import sys
-import os
-
-macros = []
-
-if sys.byteorder != "little" and os.environ.get("SET_LITTLE_ENDIAN") != '1':
-    macros.append(("IS_LITTLE_ENDIAN", 0)) # 1 by default
-
 ext_modules = [
     Extension(
         'compaqt.compaqt',
@@ -29,8 +21,8 @@ ext_modules = [
             'compaqt/',
             'compaqt/main/',
             'compaqt/settings/',
+            'compaqt/py_fallback/',
         ],
-        define_macros=macros
     ),
 ]
 
@@ -59,6 +51,7 @@ setup(
             'main/*.h',
             'types/*.h',
             'settings/*.h',
+            'py_fallback/*.py'
         ]
     },
     include_package_data=True,

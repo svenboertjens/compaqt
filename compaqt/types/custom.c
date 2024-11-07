@@ -104,17 +104,15 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
 
     // Allocate 1 byte per type for the indexes as those are stored per byte (as idxs range from 0-31)
     ob->ptr_idxs = (uint8_t *)malloc(amt);
-    
-    // The space to allocate for the pointers
-    const size_t ptr_alloc_size = sizeof(void *) * amt;
+    ob->amt = amt;
 
     // Allocate space for the type and function pointers
-    ob->types = (PyTypeObject **)malloc(ptr_alloc_size);
-    ob->writes = (PyObject **)malloc(ptr_alloc_size);
+    ob->types = (PyTypeObject **)malloc(amt << 3);
+    ob->writes = (PyObject **)malloc(amt << 3);
 
     if (ob->ptr_idxs == NULL || ob->types == NULL || ob->writes == NULL)
     {
-        // Freeing is done by the dealloc function
+        // Freeing is done by the destructor
         Py_DECREF(ob);
         return PyErr_NoMemory();
     }
@@ -129,52 +127,48 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
 
         if (!PyLong_Check(idx))
         {
-            PyErr_Format(PyExc_ValueError, "Expected a key of type 'int', got '%s'", Py_TYPE(idx)->tp_name);
+            PyErr_Format(PyExc_ValueError, "Expected the value on index 0 to be of type 'int', got '%s'", Py_TYPE(idx)->tp_name);
+            Py_DECREF(ob);
+            return NULL;
+        }
+
+        if (!PyTuple_Check(tuple) || PyTuple_GET_SIZE(tuple) != 2)
+        {
+            PyErr_Format(PyExc_ValueError, "Expected values of 'tuple' type of size 2, got a '%s' of size %zu", Py_TYPE(tuple)->tp_name, Py_SIZE(tuple));
+            Py_DECREF(ob);
+            return NULL;
+        }
+
+        PyObject *type = PyTuple_GET_ITEM(tuple, 0);
+        PyObject *func = PyTuple_GET_ITEM(tuple, 1);
+
+        if (!PyType_Check(type))
+        {
+            PyErr_Format(PyExc_ValueError, "Expected a key of type 'type', got '%s'", Py_TYPE(type)->tp_name);
+            Py_DECREF(ob);
+            return NULL;
+        }
+        if (!PyCallable_Check(func))
+        {
+            PyErr_Format(PyExc_ValueError, "Expected the value on index 1 to be a callable object, got '%s'", Py_TYPE(func)->tp_name);
             Py_DECREF(ob);
             return NULL;
         }
 
         // The index in the array to store the type in
-        const size_t ptr_idx = PyLong_AsUnsignedLongLong(idx);
+        const unsigned long ptr_idx = PyLong_AsUnsignedLong(idx);
 
-        if (ptr_idx > MAX_TYPE_IDX) {
-            PyErr_Format(PyExc_IndexError, "Custom type index out of range: got %zu, max is %zu", ptr_idx, (size_t)(MAX_TYPE_IDX));
+        // Check if the index was negative
+        if (ptr_idx == (unsigned long)-1 && PyErr_Occurred())
+        {
+            PyErr_Format(PyExc_IndexError, "Custom type index should be positive, got %lu", ptr_idx);
             Py_DECREF(ob);
             return NULL;
         }
 
-        ob->ptr_idxs[i] = ptr_idx;
-
-        if (!PyTuple_Check(tuple) || PyTuple_GET_SIZE(tuple) != 2)
+        if (ptr_idx > MAX_TYPE_IDX)
         {
-            PyErr_Format(PyExc_ValueError, "Expected values of 'tuple' type of size 2, got '%s' of size %zu", Py_TYPE(tuple)->tp_name, Py_SIZE(tuple));
-            Py_DECREF(ob);
-            return NULL;
-        }
-
-        // Values can be the function and type interchangeably, see which is what and then link them to the `func` and `type`
-        PyObject *val1 = PyTuple_GET_ITEM(tuple, 0);
-        PyObject *val2 = PyTuple_GET_ITEM(tuple, 1);
-
-        PyObject *func;
-        PyObject *type;
-
-        PyTypeObject *type1 = Py_TYPE(val1);
-        PyTypeObject *type2 = Py_TYPE(val2);
-
-        if (type1 == &PyFunction_Type && type2 == &PyType_Type)
-        {
-            func = val1;
-            type = val2;
-        }
-        else if (type2 == &PyFunction_Type && type1 == &PyType_Type)
-        {
-            func = val2;
-            type = val1;
-        }
-        else
-        {
-            PyErr_Format(PyExc_ValueError, "Expected a tuple pair with a 'function' and 'type' object, got '%s' and '%s'", type1->tp_name, type2->tp_name);
+            PyErr_Format(PyExc_IndexError, "Custom type index out of range: got %lu, max is %i", ptr_idx, MAX_TYPE_IDX);
             Py_DECREF(ob);
             return NULL;
         }
@@ -184,6 +178,7 @@ PyObject *get_custom_types_wr(PyObject *self, PyObject *args)
         Py_INCREF(type);
 
         // Assign the write function and type to their respective index
+        ob->ptr_idxs[i] = (uint8_t)(ptr_idx << 3); // Prematurely shift up by 3 to avoid doing it in runtime
         ob->types[i] = ((PyTypeObject *)type);
         ob->writes[i] = func;
     }
@@ -282,7 +277,7 @@ int encode_custom(buffer_t *b, PyObject *value, custom_types_wr_ob *ob, buffer_c
             offset_check(b, length + MAX_METADATA_SIZE);
 
             // Write the extension mask along with the index above it
-            *(b->msg + b->offset++) = DT_EXTND | (ob->ptr_idxs[i] << 3);
+            *(b->msg + b->offset++) = DT_EXTND | ob->ptr_idxs[i];
 
             // Separate case if length is zero
             if (length == 0)

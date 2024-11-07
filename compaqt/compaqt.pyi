@@ -138,11 +138,11 @@ class types:
     """Contains type control for the serialization process
     """
     
-    def encoder_types(custom_types: {int: (type, function)}) -> CustomWriteTypes:
+    def encoder_types(custom_types: {type: (int, function)}) -> CustomWriteTypes:
         """Use custom types in encode functions.
         
-        The `custom_types` is a dict object where the key should be the ID of the custom type (0-31).
-        The value is a tuple that holds the custom type belonging to the ID and the function to call for encoding values of the respective type.
+        The `custom_types` is a dict object where the key should be the custom type.
+        The value is a tuple that holds the ID of the custom type (0-31) belonging to the type and the function to call for encoding values.
         
         Returns an object to pass along to encode functions.
         
@@ -150,7 +150,7 @@ class types:
         """
         ...
     
-    def decoder_types(custom_types: {int: function}) -> CustomReadTypes:
+    def decoder_types(custom_types: (int, function)) -> CustomReadTypes:
         """Use custom types in decode functions.
         
         The `custom_types` is a dict object where the key should be the ID of the custom type (0-31). This ID should be the same as the ID specified for the custom encode object!

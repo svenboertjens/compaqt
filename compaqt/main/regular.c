@@ -384,7 +384,7 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
             fclose(file);
             return NULL;
         }
-
+        
         // Copy the file content into the allocated message buffer
         fread(b.msg, 1, b.allocated, file);
         fclose(file);

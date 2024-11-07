@@ -53,7 +53,7 @@ The methods used to create custom type objects are located in `compaqt.types`.
 The `CustomWriteTypes` is used for encoding custom types.
 
 ```python
-types.encoder_types(custom_types: {int: (type, function)}) -> CustomWriteTypes
+types.encoder_types(custom_types: dict[type: tuple[int, function]]) -> CustomWriteTypes
 ```
 
 * `custom_types`:
@@ -61,15 +61,15 @@ A dict that holds the custom types, the functions to encode them, and their ID. 
 
 ```python
 custom_types = {
-    ID_1: (type1, function1),
-    ID_2: (type2, function2),
+    ID1: (type1, function1),
+    ID2: (type2, function2),
     ...
 }
 ```
 
-The ID is the key in the dict, and the value belonging to the ID should be a tuple that contains the custom type you want to use, and the function used to encode that data.
+The unique ID is the key in the dict, and the value belonging to the type should be a tuple containing the custom type and the function used to encode the custom type.
 
-The type and function in the tuple are interchangeable, so it doesn't matter if the type or the function is placed first.
+The type and function in the tuple are **not** interchangeable. The ID should come first, and then the function.
 
 The function for encoding the value will receive the value of the custom type (which has been type checked for you before calling), and should return a bytes object of the value that will later be used to decode the value in your decode function.
 
@@ -79,23 +79,23 @@ The function for encoding the value will receive the value of the custom type (w
 The `CustomReadTypes` is used for decoding custom types.
 
 ```python
-types.decoder_types(custom_types: {int: function}) -> CustomReadTypes
+types.decoder_types(custom_types: dict[int: function]) -> CustomReadTypes
 ```
 
 * `custom_types`:
-A dict that holds the functions to decode the custom types and the ID you previously assigned to the type in your `CustomWriteTypes` object. This dict is structured as follows:
+A dict that holds the functions to decode custom types and the unique ID used for the type when encoding with a `CustomWriteTypes` object. It's structured as follows:
 
 ```python
 custom_types = {
-    ID_1: function1,
-    ID_2: function2,
+    ID1: function1,
+    ID2: function2,
     ...
 }
 ```
 
 The ID is the key in the dict, and the value paired to the ID is the function used to decode the encoded value of your custom type.
 
-The function for encoding the value will receive the bytes as they were encoded by the custom encode function. The function should return the value however you want it, it doesn't have to be the exact custom type if that's not your goal.
+The function for decoding the value will receive the bytes as they were encoded by the custom encode function. The function is allowed to return **anything**, it does not strictly have to be the custom type.
 
 * Note: The ID that was used for a custom type in `CustomWriteTypes` **has** to be the same ID as used in the `CustomReadTypes`. Otherwise, functions won't receive the correct data, or the encoded data might be seen as invalid, throwing an error.
 
@@ -405,6 +405,8 @@ The settings allow us to control certain aspects of the serializer during runtim
 
 The allocation settings let us decide how much memory to allocate when encoding values.
 The two available modes are `manual` and `dynamic` (default), where `manual` lets us define static allocation sizes to always follow, and `dynamic` enables on-the-fly allocation size tweaks based on the input data.
+
+* Note: Allocation settings are not implemented in the Python fallback and will throw an exception when used.
 
 
 #### Manual allocations

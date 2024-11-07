@@ -66,15 +66,7 @@ For further details on how to use this library, please consult the [USAGE](https
 To install this module for Python, simply run this:
 `pip install compaqt`
 
-This library automatically detects big-endian systems and applies endianness conversions to keep data valid across architectures. If you're using a big-endian system but do not want the endianness conversions for whatever reason, set the enviroment variable `SET_LITTLE_ENDIAN` before installing the library. As per tests, these conversions bring no noticeable performance losses as they typically use intrinsics (for GCC/Clang and MSVC).
-
-Setting environment variables is done as follows:
-- On Unix: `export <VARIABLE_NAME>=1`
-- On Windows: `set <VARIABLE_NAME>=1`
-
-So if we want to enforce aliasing for example, we can do so like this:
-- On Unix: `export SET_LITTLE_ENDIAN=1 && pip install compaqt`
-- On Windows: `set SET_LITTLE_ENDIAN=1 && pip install compaqt`
+The library automatically accounts for system endianness and will always convert numbers on big-endian systems to little-endian format. This uses intrinsics with the GCC, Clang, and MSVC compilers, making this endianness conversion neglectible in performance. For the low-level enthusiast: these intrinsics typically translate to a single `BSWAP` instruction, which executes in just 1-3 CPU cycles.
 
 
 ## License

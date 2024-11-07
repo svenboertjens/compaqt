@@ -1,5 +1,6 @@
 from test_values import test_values
-from compaqt import encode, decode, validate
+import compaqt as cq
+#from compaqt import __compaqt_Py as cq
 
 print('Testing regular serialization')
 
@@ -13,12 +14,12 @@ def shorten(v: any) -> str:
 
 def test(v: any) -> None:
     try:
-        encoded = encode(v)
+        encoded = cq.encode(v)
         
-        if v != decode(encoded):
+        if v != cq.decode(encoded):
             print(f'Failed: {shorten(v)}\n')
         
-        if validate(encoded, err_on_invalid=False) == False:
+        if cq.validate(encoded, err_on_invalid=False) == False:
             print(f'Incorrectly invalidated: {shorten(v)}\n')
         
     except Exception as e:
@@ -33,14 +34,14 @@ test(test_values)
 
 # Write the entire list to a file
 f = 'test_regular.bin'
-encode(test_values, file_name=f)
+cq.encode(test_values, file_name=f)
 
 # Validate the file
-if validate(file_name=f) == False:
+if cq.validate(file_name=f) == False:
     print(f"Incorrectly invalidated file '{f}'\n")
 
 # Read the file again
-if decode(file_name=f) != test_values:
+if cq.decode(file_name=f) != test_values:
     print(f"Incorrectly decoded file '{f}'\n")
 
 # Clean up file

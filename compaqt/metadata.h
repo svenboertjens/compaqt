@@ -192,10 +192,14 @@ static inline void update_allocation_settings(const int reallocs, const size_t o
 
 // Read length mode 2
 #define RD_METADATA_LM2(msg, offset, length, num_bytes) do { \
-    length = 0; \
-    size_t __length = 0; \
-    memcpy(&(__length), msg + offset, num_bytes); \
+    size_t __length; \
+    /* Copy 8 by default, mask away redundant bytes */ \
+    memcpy(&(__length), msg + offset, 8); \
     (length) = LITTLE_64(__length); \
+    size_t length_mask = (size_t)-1; \
+    if (num_bytes != 8) \
+        length_mask = ((1ULL << (num_bytes << 3)) - 1); \
+    (length) &= length_mask; \
     offset += num_bytes; \
 } while (0)
 

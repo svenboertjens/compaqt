@@ -304,7 +304,7 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
 
     if (value_type != &PyList_Type && value_type != &PyDict_Type)
     {
-        PyErr_SetString(PyExc_ValueError, "Streaming mode only supports initialization with list/dict types");
+        PyErr_Format(PyExc_ValueError, "Streaming mode only supports initialization with list/dict types, got '%s'", ((PyTypeObject *)value_type)->tp_name);
         return NULL;
     }
 

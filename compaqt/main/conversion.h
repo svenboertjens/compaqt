@@ -24,15 +24,34 @@
     b->offset += length; \
 } while (0)
 
-#define integer_ln(value) ((_PyLong_NumBits(value) + 8) >> 3)
-#define integer_wr(b, value, length) do { \
-    _PyLong_AsByteArray((PyLongObject *)value, (unsigned char *)(b->msg + b->offset), length, 1, 1); \
-    b->offset += length; \
-} while (0)
-#define integer_rd(b, value, length) do { \
-    value = _PyLong_FromByteArray((const unsigned char *)(b->msg + b->offset), length, 1, 1); \
-    b->offset += length; \
-} while (0)
+// Use more efficient methods that released in 3.13
+
+#if PY_VERSION_HEX >= 0x030D0000 // Hex code for 3.13.0
+
+    #define integer_wr(b, value, length, success) do { \
+        /* Write with max length of 9 instead of 8 to detect overwrites (max write length is 8) */ \
+        const size_t num_bytes = PyLong_AsNativeBytes(value, b->msg + b->offset, 9, Py_ASNATIVEBYTES_LITTLE_ENDIAN); \
+        b->offset += num_bytes; \
+    } while (0)
+
+    #define integer_rd(b, value, length) do { \
+        value = PyLong_FromNativeBytes(b->msg + b->offset, length, Py_ASNATIVEBYTES_LITTLE_ENDIAN); \
+        b->offset += length; \
+    } while (0)
+
+#else
+
+    #define integer_ln(value) ((_PyLong_NumBits(value) + 8) >> 3)
+    #define integer_wr(b, value, length) do { \
+        _PyLong_AsByteArray((PyLongObject *)value, (unsigned char *)(b->msg + b->offset), length, 1, 1); \
+        b->offset += length; \
+    } while (0)
+    #define integer_rd(b, value, length) do { \
+        value = _PyLong_FromByteArray((const unsigned char *)(b->msg + b->offset), length, 1, 1); \
+        b->offset += length; \
+    } while (0)
+
+#endif
 
 #define float_wr(b, value) do { \
     double num = PyFloat_AS_DOUBLE(value); \

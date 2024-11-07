@@ -1,5 +1,6 @@
 from test_values import test_values
-from compaqt import StreamEncoder, StreamDecoder, validate
+import compaqt as cq
+#from compaqt import __compaqt_Py as cq
 
 print('Testing streaming serialization')
 
@@ -8,29 +9,29 @@ f = 'test_stream.bin'
 
 # Test 1 (regular use)
 
-enc = StreamEncoder(f, list)
+enc = cq.StreamEncoder(f, list)
 enc.write(test_values)
 enc.finalize()
 
-validate(file_name=f, err_on_invalid=True)
+cq.validate(file_name=f, err_on_invalid=True)
 
-dec = StreamDecoder(f)
+dec = cq.StreamDecoder(f)
 if dec.read() != test_values:
     print(f"Invalid decoding (1)")
 dec.finalize()
 
 # Test 2 (preserve file)
 
-enc = StreamEncoder(f, list, preserve_file=True)
+enc = cq.StreamEncoder(f, list, preserve_file=True)
 enc.write(test_values)
 
 offset = enc.start_offset
 
 enc.finalize()
 
-validate(file_name=f, err_on_invalid=True, file_offset=offset)
+cq.validate(file_name=f, err_on_invalid=True, file_offset=offset)
 
-dec = StreamDecoder(f, file_offset=offset)
+dec = cq.StreamDecoder(f, file_offset=offset)
 if dec.read() != test_values:
     print(f"Invalid decoding (2)")
 dec.finalize()
@@ -39,27 +40,27 @@ dec.finalize()
 
 offset = 17
 
-enc = StreamEncoder(f, list, file_offset=offset)
+enc = cq.StreamEncoder(f, list, file_offset=offset)
 enc.write(test_values)
 enc.finalize()
 
-validate(file_name=f, err_on_invalid=True, file_offset=offset)
+cq.validate(file_name=f, err_on_invalid=True, file_offset=offset)
 
-dec = StreamDecoder(f, file_offset=offset)
+dec = cq.StreamDecoder(f, file_offset=offset)
 if dec.read() != test_values:
     print(f"Invalid decoding (3)")
 dec.finalize()
 
 # Test 4 (incremental reading/writing)
 
-enc = StreamEncoder(f, list)
+enc = cq.StreamEncoder(f, list)
 enc.write(test_values)
 enc.write(test_values)
 enc.finalize()
 
-validate(file_name=f, err_on_invalid=True)
+cq.validate(file_name=f, err_on_invalid=True)
 
-dec = StreamDecoder(f)
+dec = cq.StreamDecoder(f)
 if dec.read(len(test_values)) != test_values:
     print(f"Invalid decoding (4.1)")
 if dec.read(len(test_values)) != test_values:

@@ -1,4 +1,5 @@
 import compaqt as cq
+#from compaqt import __compaqt_Py as cq
 
 print('Testing custom types serialization')
 
@@ -52,6 +53,8 @@ dec = cq.types.decoder_types({
 # Test cases
 
 def test_custom_type(obj, expected_value):
+    obj = obj(expected_value)
+    
     encoded = cq.encode(obj, custom_types=enc)
     decoded = cq.decode(encoded, custom_types=dec)
 
@@ -59,9 +62,9 @@ def test_custom_type(obj, expected_value):
         print(f"Failed for type {type(obj).__name__}")
 
 # Run tests for each custom type
-test_custom_type(StringCustom("test"), "test")
-test_custom_type(IntegerCustom(12345), 12345)
-test_custom_type(FloatCustom(123.456), 123.456)
+test_custom_type(StringCustom, "test")
+test_custom_type(IntegerCustom, 12345)
+test_custom_type(FloatCustom, 123.456)
 
 # Additional tests
 

@@ -3,6 +3,16 @@
 All changes to the `compaqt` module are documented here.
 
 
+## [1.0.0] - 2024-11-06
+
+### Updates:
+- Pure Python fallback added;
+- Remove manual endianness handling;
+- Support for Python 3.13;
+- Optimization in the validation method;
+- Fix potential validation issue with streaming;
+
+
 ## [0.5.1] - 2024-11-01
 
 ### Updates:

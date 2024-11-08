@@ -1,0 +1,57 @@
+services:
+  python3.7:
+    build:
+      context: ../.
+      dockerfile: docker/Dockerfile
+      args:
+        PYTHON_VERSION: "3.7"
+    command: python /usr/src/app/tests/run_tests.py
+
+  python3.8:
+    build:
+      context: ../.
+      dockerfile: docker/Dockerfile
+      args:
+        PYTHON_VERSION: "3.8"
+    command: python /usr/src/app/tests/run_tests.py
+
+  python3.9:
+    build:
+      context: ../.
+      dockerfile: docker/Dockerfile
+      args:
+        PYTHON_VERSION: "3.9"
+    command: python /usr/src/app/tests/run_tests.py
+
+  python3.10:
+    build:
+      context: ../.
+      dockerfile: docker/Dockerfile
+      args:
+        PYTHON_VERSION: "3.10"
+    command: python /usr/src/app/tests/run_tests.py
+
+  python3.11:
+    build:
+      context: ../.
+      dockerfile: docker/Dockerfile
+      args:
+        PYTHON_VERSION: "3.11"
+    command: python /usr/src/app/tests/run_tests.py
+
+  python3.12:
+    build:
+      context: ../.
+      dockerfile: docker/Dockerfile
+      args:
+        PYTHON_VERSION: "3.12"
+    command: python /usr/src/app/tests/run_tests.py
+
+  python3.13:
+    build:
+      context: ../.
+      dockerfile: docker/Dockerfile
+      args:
+        PYTHON_VERSION: "3.13"
+    command: python /usr/src/app/tests/run_tests.py
+

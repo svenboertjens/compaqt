@@ -67,22 +67,6 @@
     b->offset += 8; \
 } while (0)
 
-#define complex_wr(b, value) do { \
-    Py_complex complex = PyComplex_AsCComplex(value); \
-    LITTLE_DOUBLE(complex.real); \
-    LITTLE_DOUBLE(complex.imag); \
-    memcpy(b->msg + b->offset, &complex, sizeof(Py_complex)); \
-    b->offset += sizeof(Py_complex); \
-} while (0)
-#define complex_rd(b, value) do { \
-    Py_complex complex; \
-    memcpy(&complex, b->msg + b->offset, sizeof(Py_complex)); \
-    LITTLE_DOUBLE(complex.real); \
-    LITTLE_DOUBLE(complex.imag); \
-    value = PyComplex_FromCComplex(complex); \
-    b->offset += sizeof(Py_complex); \
-} while (0)
-
 #define bool_wr(b, value) (*(b->msg + b->offset++) = DT_BOOLF | (!!(value == Py_True) << 3))
 
 #endif // CONVERSION_H

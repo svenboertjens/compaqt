@@ -172,7 +172,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
 
         PyObject *py_stream_compatible = PyDict_GetItemString(kwargs, "stream_compatible");
 
-        if (py_stream_compatible != NULL && Py_IsTrue(py_stream_compatible))
+        if (py_stream_compatible != NULL && py_stream_compatible == Py_True)
             stream_compatible = 1;
     }
 

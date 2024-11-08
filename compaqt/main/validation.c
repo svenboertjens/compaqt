@@ -62,7 +62,6 @@ static inline int _validate(buffer_t *b, FILE *file)
     case DT_EXTND:
     {
         ++(b->offset);
-        CHECK(1);
 
         const size_t num_bytes = *(b->msg + b->offset++) & 0xFF;
         CHECK(num_bytes);
@@ -74,6 +73,11 @@ static inline int _validate(buffer_t *b, FILE *file)
 
         return 0;
     }
+    case DT_INTGR:
+    {
+        b->offset += ((*(b->msg + b->offset) & 0xFF) >> 3) + 1;
+        return 0;
+    }
     case DT_NOUSE: return 1; // Not in use, so this would mean invalid
     default:
     {
@@ -82,7 +86,6 @@ static inline int _validate(buffer_t *b, FILE *file)
         RD_METADATA(b->msg, b->offset, length);
 
         b->offset += length;
-
         return 0;
     }
     }

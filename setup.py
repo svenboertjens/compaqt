@@ -28,7 +28,7 @@ ext_modules = [
 
 setup(
     name="compaqt",
-    version="0.5.1",
+    version="1.0.0",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",
@@ -58,8 +58,16 @@ setup(
     
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
     ],
+    python_requires='>=3.7, <=3.13',
     license='BSD-3-Clause'
 )

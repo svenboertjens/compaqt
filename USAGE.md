@@ -18,6 +18,7 @@ Here, you can find explanations on how to use `compaqt`.
 - [Validation](#validation)
 - [Settings](#settings)
     - [Allocations](#allocations)
+- [Implementations](#implementations)
 
 
 ## Supported datatypes
@@ -435,4 +436,20 @@ The amount of bytes to allocate per item found in a list or dict. One key-value 
 The amount of bytes to allocate as extra space when the currently allocated buffer is insufficient. This size is also added to the initial allocation size when starting an encoding process.
 
 * Note: These values default to the currently set values when not provided.
+
+
+## Implementations
+
+Compaqt provides both a C implementation and a Pure-Python version. The C implementation is used by default, when available.
+
+If you want to use a specific implementation, you can use `compaqt.__compaqt_C` and `compaqt.__compaqt_Py`. The methods are available through that namespace, so for example the Python implementation's `encode` can be accessed through `compaqt.__compaqt_Py.encode(...)`.
+
+The `__compaqt_C` namespace will be set to `None` when using the Python implementation due to the C version not being found.
+
+By default, Compaqt will set an `ImportWarning` (not throwing an exception) when the C implementation isn't found. This warning can be suppressed as follows:
+
+```python
+import warnings
+warnings.filterwarnings("ignore", category=ImportWarning)
+```
 

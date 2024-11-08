@@ -66,7 +66,7 @@ For further details on how to use this library, please consult the [USAGE](https
 To install this module for Python, simply run this:
 `pip install compaqt`
 
-The library automatically accounts for system endianness and will always convert numbers on big-endian systems to little-endian format. This uses intrinsics with the GCC, Clang, and MSVC compilers, making this endianness conversion neglectible in performance. For the low-level enthusiast: these intrinsics typically translate to a single `BSWAP` instruction, which executes in just 1-3 CPU cycles.
+For cases where C code cannot be compiled or used, a Python fallback is implemented, which is automatically used if the C implementation fails.
 
 
 ## License

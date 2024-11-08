@@ -13,7 +13,7 @@ def group_item(data: DecodeData):
     if func:
         func(data)
     else:
-        raise ValidationError("The bytes object does not appear valid GROUP")
+        raise ValidationError("The bytes object does not appear valid")
 
 def static_item(data: DecodeData, size: int):
     data.offset += size
@@ -46,7 +46,7 @@ def validate_item(data: DecodeData):
     if func:
         func(data)
     else:
-        raise ValidationError("The bytes object does not appear valid ITEM")
+        raise ValidationError("The bytes object does not appear valid")
 
 type_lookup = {
     DT_BYTES: metadata_item,
@@ -61,7 +61,7 @@ type_lookup = {
 
 def limit_check(data: DecodeData, length: int):
     if data.offset + length > data.max:
-        raise ValidationError("The bytes object does not appear valid REG")
+        raise ValidationError("The bytes object does not appear valid")
 
 def chunk_check(data: DecodeData, length: int):
     if data.offset + length > data.max:
@@ -71,7 +71,7 @@ def chunk_check(data: DecodeData, length: int):
         data.offset = 0
         
         if len(data.msg) != data.max:
-            raise ValidationError("The bytes object does not appear valid FILE")
+            raise ValidationError("The bytes object does not appear valid")
 
 def validate(encoded: bytes=None, file_name: str=None, file_offset: int=0, chunk_size: int=0, err_on_invalid: bool=False):
     if encoded != None:
@@ -80,7 +80,7 @@ def validate(encoded: bytes=None, file_name: str=None, file_offset: int=0, chunk
         valid = data.offset == data.max
         
         if err_on_invalid and valid == False:
-            raise ValidationError("The bytes object does not appear valid END")
+            raise ValidationError("The bytes object does not appear valid")
 
         return valid
     elif file_name != None:

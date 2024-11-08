@@ -29,7 +29,13 @@ try:
     __compaqt_C.StreamDecoder = StreamDecoder
     __compaqt_C.validate = validate
     __compaqt_C.types = types
-except ModuleNotFoundError as e:
+except:
     __compaqt_C = None
-    print("Failed to import Compaqt C implementation, using the Python fallback")
+    
+    # Set a warning as the C implementation couldn't be found
+    from warnings import warn
+    warn(
+        "Failed to import Compaqt C implementation, using the Python fallback. Performance may be degraded.",
+        ImportWarning
+    )
 

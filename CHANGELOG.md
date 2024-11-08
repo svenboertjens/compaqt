@@ -3,7 +3,17 @@
 All changes to the `compaqt` module are documented here.
 
 
-## [1.0.0] - 2024-11-06
+## [1.0.0-1] - 2024-11-08
+
+### Fixes:
+- Remove debugging artifacts (whoops);
+
+### Updates:
+- Improved documentation;
+- Improved import warning;
+
+
+## [1.0.0] - 2024-11-08
 
 ### Fixes:
 - Fix potential validation issue with streaming;

@@ -3,7 +3,16 @@
 All changes to the `compaqt` module are documented here.
 
 
-## [1.0.0-1] - 2024-11-08
+## [1.0.2] - 2024-11-09
+
+### Fixes:
+- Fix type hints with custom types;
+
+### Updates:
+- Custom type encoding lookup time from `O(n)` to `O(1)`;
+
+
+## [1.0.1] - 2024-11-08
 
 ### Fixes:
 - Remove debugging artifacts (whoops);

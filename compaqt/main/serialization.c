@@ -1,9 +1,17 @@
 // This file contains the main processing functions for serialization
 
-#include "types/custom.h"
-#include "metadata.h"
+#include "types/usertypes.h"
+#include "types/base.h"
+#include "types/cbytes.h"
+#include "types/cstr.h"
 
-#include "exceptions.h"
+#include "globals/exceptions.h"
+#include "globals/typemasks.h"
+#include "globals/buftricks.h"
+#include "globals/metadata.h"
+#include "globals/typedefs.h"
+
+#define MAX_METADATA_SIZE 9
 
 /* ENCODING */
 
@@ -13,10 +21,10 @@
 
 // Macro for calling and testing the offset check function
 #define OFFSET_CHECK(length) do { \
-    if (offset_check(b, length) == 1) return 1; \
+    if (b->bufcheck(b, length) == 1) return 1; \
 } while (0)
 
-int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buffer_check_t offset_check)
+int encode_object(encode_t *b, PyObject *item)
 {
     PyTypeObject *type = Py_TYPE(item);
     const char *tp_name = type->tp_name;
@@ -32,17 +40,18 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
             const size_t length = PyBytes_GET_SIZE(item);
 
             OFFSET_CHECK(MAX_METADATA_SIZE + length);
-            WR_METADATA(b->msg, b->offset, DT_BYTES, length);
+            WR_METADATA(b->offset, DT_BYTES, length);
 
             const char *ptr = PyBytes_AS_STRING(item);
-            memcpy(b->msg + b->offset, ptr, length);
+            memcpy(b->offset, ptr, length);
             b->offset += length;
         }
         else // Boolean
         {
             OFFSET_CHECK(1);
-            *(b->msg + b->offset++) = (unsigned char)(5) | (unsigned char)(0 << 3) | (!!(item == ((PyObject*)((&_Py_TrueStruct)))) << 3);
+            *BUF_POST_INC = (unsigned char)(5) | (unsigned char)(0 << 3) | (!!(item == ((PyObject*)((&_Py_TrueStruct)))) << 3);
         }
+
         return 0;
     }
     case 's': // String
@@ -53,9 +62,9 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
         const char *bytes = PyUnicode_AsUTF8AndSize(item, (Py_ssize_t *)&length);
 
         OFFSET_CHECK(MAX_METADATA_SIZE + length);
-        WR_METADATA(b->msg, b->offset, DT_STRNG, length);
+        WR_METADATA(b->offset, DT_STRNG, length);
 
-        memcpy(b->msg + b->offset, bytes, length);
+        memcpy(b->offset, bytes, length);
         b->offset += length;
 
         return 0;
@@ -67,7 +76,7 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
 
         #if (PY_VERSION_HEX >= 0x030D0000)
 
-            const size_t length = PyLong_AsNativeBytes(item, b->msg + b->offset + 1, 9, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
+            const size_t length = PyLong_AsNativeBytes(item, BUF_GET_OFFSET + 1, 9, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
 
             if (length == 9)
             {
@@ -75,7 +84,7 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
                 return 1;
             }
             
-            *(b->msg + b->offset) = DT_INTGR | (length << 3);
+            *(b->offset) = DT_INTGR | (length << 3);
             b->offset += length + 1;
 
         #else
@@ -88,9 +97,9 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
                 return 1;
             }
             
-            *(b->msg + b->offset++) = DT_INTGR | (length << 3);
+            *BUF_POST_INC = DT_INTGR | (length << 3);
 
-            _PyLong_AsByteArray((PyLongObject *)item, (unsigned char *)(b->msg + b->offset), length, 1, 1);
+            _PyLong_AsByteArray((PyLongObject *)item, (unsigned char *)(b->offset), length, 1, 1);
             b->offset += length;
 
         #endif
@@ -102,12 +111,13 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
         DT_CHECK(PyFloat_Type);
         OFFSET_CHECK(9);
 
-        *(b->msg + b->offset++) = DT_FLOAT;
+        b->offset[0] = DT_FLOAT;
+        BUF_PRE_INC;
 
         double num = PyFloat_AS_DOUBLE(item);
         LITTLE_DOUBLE(num);
 
-        memcpy(b->msg + b->offset, &num, 8);
+        memcpy(b->offset, &num, 8);
         b->offset += 8;
 
         return 0;
@@ -119,7 +129,7 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
         
         OFFSET_CHECK(1);
         
-        *(b->msg + b->offset++) = DT_NONTP;
+        *BUF_POST_INC = DT_NONTP;
         return 0;
     }
     case 'l': // List
@@ -129,10 +139,10 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
         const size_t num_items = (size_t)PyList_GET_SIZE(item);
 
         OFFSET_CHECK(MAX_METADATA_SIZE);
-        WR_METADATA(b->msg, b->offset, DT_ARRAY, num_items);
+        WR_METADATA(b->offset, DT_ARRAY, num_items);
 
         for (size_t i = 0; i < num_items; ++i)
-            if (encode_item(b, PyList_GET_ITEM(item, i), custom_ob, offset_check) == 1) return 1;
+            if (encode_object(b, PyList_GET_ITEM(item, i)) == 1) return 1;
         
         return 0;
     }
@@ -143,40 +153,41 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
         const size_t num_items = PyDict_GET_SIZE(item);
 
         OFFSET_CHECK(MAX_METADATA_SIZE);
-        WR_METADATA(b->msg, b->offset, DT_DICTN, num_items);
+        WR_METADATA(b->offset, DT_DICTN, num_items);
 
         Py_ssize_t pos = 0;
         PyObject *key, *val;
         
         while (PyDict_Next(item, &pos, &key, &val))
-            if (encode_item(b, key, custom_ob, offset_check) == 1 || encode_item(b, val, custom_ob, offset_check) == 1) return 1;
+            if (encode_object(b, key) == 1 || encode_object(b, val) == 1) return 1;
         
         return 0;
     }
     }
 
     // Check for custom types
-    return encode_custom(b, item, custom_ob, offset_check);
+    return encode_custom(b, item);
 }
 
 /* DECODING */
 
 // Macro for calling and testing the overread check function
 #define OVERREAD_CHECK(length) do { \
-    if (overread_check(b, length) == 1) return NULL; \
+    if (b->bufcheck(b, length) == 1) return NULL; \
 } while (0)
 
 // Metadata reading macros for specific metadata modes
-#define RD_LN0(msg, offset, length) do { \
-    (length) = (*((msg) + (offset)++) & 0xFF) >> 4; \
+#define RD_LN0(length) do { \
+    (length) = (byte & 0xFF) >> 4; \
+    BUF_PRE_INC; \
 } while (0)
-#define RD_LN1(msg, offset, length) do { \
-    (length)  = (*((msg) + (offset)++) & 0xFF) >> 5; \
-    (length) |= (*((msg) + (offset)++) & 0xFF) << 3; \
+#define RD_LN1(length) do { \
+    (length)  = (*BUF_POST_INC & 0xFF) >> 5; \
+    (length) |= (*BUF_POST_INC & 0xFF) << 3; \
 } while (0)
-#define RD_LN2(msg, offset, length) do { \
-    const int num_bytes = ((*((msg) + (offset)++) & 0b11100000) >> 5) + 1; \
-    RD_METADATA_LM2((msg), (offset), (length), num_bytes); \
+#define RD_LN2(length) do { \
+    const int num_bytes = ((*BUF_POST_INC & 0b11100000) >> 5) + 1; \
+    RD_METADATA_LM2(b->offset, length, num_bytes); \
 } while (0)
 
 // Mode 0 metadata cases (`0b10000` case for mode 0 where first length bit is set)
@@ -188,35 +199,46 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
 
 #define TYPE_BYTES(RD_LNx) { \
     size_t length; \
-    RD_LNx(b->msg, b->offset, length); \
+    RD_LNx(length); \
     OVERREAD_CHECK(length); \
-    PyObject *value = PyBytes_FromStringAndSize(b->msg + b->offset, (Py_ssize_t)(length)); \
+    \
+    PyObject *value; \
+    if (b->bufd != NULL) \
+        value = cbytes_create(b->bufd, b->offset, length); \
+    else \
+        value = PyBytes_FromStringAndSize(b->offset, (Py_ssize_t)(length)); \
+    \
     b->offset += length; \
     return value; \
 }
 
 #define TYPE_STRNG(RD_LNx) { \
     size_t length; \
-    RD_LNx(b->msg, b->offset, length); \
+    RD_LNx(length); \
     OVERREAD_CHECK(length); \
-    PyObject *value = PyUnicode_DecodeUTF8(b->msg + b->offset, length, NULL); \
+    PyObject *value; \
+    \
+    if (b->bufd != NULL) \
+        value = cstr_create(b->bufd, b->offset, length); \
+    else \
+        value = PyUnicode_DecodeUTF8(b->offset, length, "strict"); \
+    \
     b->offset += length; \
     return value; \
 }
 
 #define TYPE_ARRAY(RD_LNx) { \
     size_t num_items; \
-    RD_LNx(b->msg, b->offset, num_items); \
+    RD_LNx(num_items); \
     OVERREAD_CHECK(num_items); \
     PyObject *list = PyList_New(num_items); \
+    \
     if (list == NULL) \
-    { \
-        PyErr_NoMemory(); \
-        return NULL; \
-    } \
+        return PyErr_NoMemory(); \
+    \
     for (size_t i = 0; i < num_items; ++i) \
     { \
-        PyObject *item = decode_item(b, custom_ob, overread_check); \
+        PyObject *item = decode_bytes(b); \
         if (item == NULL) \
         { \
             Py_DECREF(list); \
@@ -229,23 +251,21 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
 
 #define TYPE_DICTN(RD_LNx) { \
     size_t num_items; \
-    RD_LNx(b->msg, b->offset, num_items); \
-    OVERREAD_CHECK(num_items); \
+    RD_LNx(num_items); \
     PyObject *dict = PyDict_New(); \
+    \
     if (dict == NULL) \
-    { \
-        PyErr_NoMemory(); \
-        return NULL; \
-    } \
+        return PyErr_NoMemory(); \
+    \
     for (size_t i = 0; i < num_items; ++i) \
     { \
-        PyObject *key = decode_item(b, custom_ob, overread_check); \
+        PyObject *key = decode_bytes(b); \
         if (key == NULL) \
         { \
             Py_DECREF(dict); \
             return NULL; \
         } \
-        PyObject *val = decode_item(b, custom_ob, overread_check); \
+        PyObject *val = decode_bytes(b); \
         if (val == NULL) \
         { \
             Py_DECREF(dict); \
@@ -261,52 +281,70 @@ int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buff
 
 #define ANYMODE(dt, TYPE_x) MODE0(dt) TYPE_x(RD_LN0) MODE1(dt) TYPE_x(RD_LN1) MODE2(dt) TYPE_x(RD_LN2) 
 
-PyObject *decode_item(buffer_t *b, custom_types_rd_ob *custom_ob, buffer_check_t overread_check)
+PyObject *decode_bytes(decode_t *b)
 {
-    const char byte = *(b->msg + b->offset);
+    const char byte = *b->offset;
     switch (byte & 0b11111)
     {
     // Static length types, no length metadata
     case DT_FLOAT:
     {
-        ++(b->offset);
+        BUF_PRE_INC;
 
         OVERREAD_CHECK(8);
 
-        double num = 0;
-        memcpy(&num, b->msg + b->offset, 8);
+        double num;
+        memcpy(&num, b->offset, 8);
 
         LITTLE_DOUBLE(num);
 
-        PyObject *value = PyFloat_FromDouble(num);
-
         b->offset += 8;
-        return value;
+
+        return PyFloat_FromDouble(num);
     }
-    case DT_BOOLT: OVERREAD_CHECK(0); ++(b->offset); Py_RETURN_TRUE;
-    case DT_BOOLF: OVERREAD_CHECK(0); ++(b->offset); Py_RETURN_FALSE;
-    case DT_NONTP: OVERREAD_CHECK(0); ++(b->offset); Py_RETURN_NONE;
+    case DT_BOOLT:
+    {
+        BUF_PRE_INC;
+        OVERREAD_CHECK(0);
+        Py_RETURN_TRUE;
+    }
+    case DT_BOOLF:
+    {
+        BUF_PRE_INC;
+        OVERREAD_CHECK(0);
+        Py_RETURN_FALSE;
+    }
+    case DT_NONTP:
+    {
+        BUF_PRE_INC;
+        OVERREAD_CHECK(0);
+        Py_RETURN_NONE;
+    }
 
     // Integers use their own metadata mechanic
     case DT_INTGR | 0b00000:
     case DT_INTGR | 0b01000:
     case DT_INTGR | 0b10000:
-    case DT_INTGR | 0b11000: // Data is stacked on top of the first 3 bits so accept any combination
+    case DT_INTGR | 0b11000: // Data is stacked on top of the first 3 bits so accept all top 2 bit variations
     {
-        const size_t num_bytes = (*(b->msg + b->offset) & 0xFF) >> 3;
-        ++(b->offset);
+        const size_t num_bytes = (*BUF_POST_INC & 0xFF) >> 3;
+
+        OVERREAD_CHECK(num_bytes);
 
         #if (PY_VERSION_HEX >= 0x030D0000)
 
-            PyObject *value = PyLong_FromNativeBytes(b->msg + b->offset, num_bytes, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
+            PyObject *value = PyLong_FromNativeBytes(b->offset, num_bytes, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
 
         #else
 
-            PyObject *value = _PyLong_FromByteArray((const unsigned char *)(b->msg + b->offset), num_bytes, 1, 1);
+            PyObject *value = _PyLong_FromByteArray((const unsigned char *)(b->offset), num_bytes, 1, 1);
 
         #endif
 
+        OVERREAD_CHECK(num_bytes);
+
         b->offset += num_bytes;
+
         return value;
     }
 
@@ -317,7 +355,9 @@ PyObject *decode_item(buffer_t *b, custom_types_rd_ob *custom_ob, buffer_check_t
     ANYMODE(DT_DICTN, TYPE_DICTN)
     }
 
-    // See if it's a custom type (returns NULL if not)
-    return decode_custom(b, custom_ob, overread_check);
+    // Try as a custom type
+    PyObject *custom_result = decode_custom(b);
+
+    return custom_result;
 }
 

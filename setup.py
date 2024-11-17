@@ -3,6 +3,7 @@ from setuptools import setup, Extension, find_packages
 from setuptools.command.build_ext import build_ext
 
 force_py_fallback = os.environ.get('COMPAQT_PY_IMPL', '0') == '1'
+debug_build = os.environ.get('COMPAQT_C_IMPL', '0') == '1'
 
 ext_modules = []
 
@@ -12,18 +13,25 @@ if not force_py_fallback:
             'compaqt.compaqt',
             sources=[
                 'compaqt/compaqt.c',
-                'compaqt/metadata.c',
-                'compaqt/exceptions.c',
+                
+                'compaqt/globals/exceptions.c',
+                
                 'compaqt/main/serialization.c',
                 'compaqt/main/regular.c',
                 'compaqt/main/stream.c',
                 'compaqt/main/validation.c',
-                'compaqt/types/custom.c',
+                
+                'compaqt/types/usertypes.c',
+                'compaqt/types/strdata.c',
+                'compaqt/types/cbytes.c',
+                'compaqt/types/cstr.c',
+                
                 'compaqt/settings/allocations.c',
             ],
             include_dirs=[
                 'compaqt/',
                 'compaqt/main/',
+                'compaqt/globals/',
                 'compaqt/settings/',
                 'compaqt/py_fallback/',
             ],
@@ -34,12 +42,15 @@ class BuildExt(build_ext):
     def run(self):
         try:
             super().run()
-        except:
+        except Exception as e:
+            if debug_build:
+                raise e
+            
             ext_modules.clear()
 
 setup(
     name="compaqt",
-    version="1.0.1",
+    version="1.0.2",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",

@@ -1,3 +1,5 @@
+# docker compose --file docker/compose.yml up --build
+
 services:
   python3.7:
     build:

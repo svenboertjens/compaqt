@@ -1,10 +1,10 @@
 #ifndef SERIALIZATION_H
 #define SERIALIZATION_H
 
-#include "metadata.h"
-#include "types/custom.h"
+#include <Python.h>
+#include "globals/typedefs.h"
 
-int encode_item(buffer_t *b, PyObject *item, custom_types_wr_ob *custom_ob, buffer_check_t offset_check);
-PyObject *decode_item(buffer_t *b, custom_types_rd_ob *custom_ob, buffer_check_t overread_check);
+int encode_object(encode_t *b, PyObject *item);
+PyObject *decode_bytes(decode_t *b);
 
 #endif // SERIALIZATION_H

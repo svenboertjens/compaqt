@@ -6,11 +6,13 @@
 #include "main/stream.h"
 #include "main/validation.h"
 
-#include "types/custom.h"
+#include "types/usertypes.h"
+#include "types/cbytes.h"
+#include "types/cstr.h"
 
 #include "settings/allocations.h"
 
-#include "exceptions.h"
+#include "globals/exceptions.h"
 
 /* MODULE DEFINITIONS */
 
@@ -46,8 +48,8 @@ static PyTypeObject settings_obj = {
 
 // TYPES methods
 static PyMethodDef TypesMethods[] = {
-    {"encoder_types", (PyCFunction)get_custom_types_wr, METH_VARARGS, NULL},
-    {"decoder_types", (PyCFunction)get_custom_types_rd, METH_VARARGS, NULL},
+    {"encoder_types", (PyCFunction)get_utypes_encode_ob, METH_VARARGS, NULL},
+    {"decoder_types", (PyCFunction)get_utypes_decode_ob, METH_VARARGS, NULL},
 
     {NULL, NULL, 0, NULL}
 };
@@ -70,20 +72,6 @@ static struct PyModuleDef compaqt = {
     CompaqtMethods
 };
 
-// Macro to call on init failure
-#define INIT_CLEANUP do { \
-    Py_XDECREF(settings); \
-    Py_XDECREF(types); \
-    Py_XDECREF(EncodingError); \
-    Py_XDECREF(DecodingError); \
-    Py_XDECREF(ValidationError); \
-    Py_XDECREF(FileOffsetError); \
-    \
-    /* Module is never NULL here */ \
-    Py_DECREF(m); \
-    return NULL; \
-} while (0)
-
 // Module init function
 PyMODINIT_FUNC PyInit_compaqt(void) {
     /* PREPARE CUSTOM TYPES */
@@ -93,14 +81,19 @@ PyMODINIT_FUNC PyInit_compaqt(void) {
     
     if (PyType_Ready(&types_obj) < 0)
         return NULL;
-    if (PyType_Ready(&custom_types_wr_t) < 0)
+    if (PyType_Ready(&utypes_encode_t) < 0)
         return NULL;
-    if (PyType_Ready(&custom_types_rd_t) < 0)
+    if (PyType_Ready(&utypes_decode_t) < 0)
         return NULL;
     
     if (PyType_Ready(&stream_encoder_t) < 0)
         return NULL;
     if (PyType_Ready(&stream_decoder_t) < 0)
+        return NULL;
+    
+    if (PyType_Ready(&cbytes_t) < 0)
+        return NULL;
+    if (PyType_Ready(&cstr_t) < 0)
         return NULL;
 
     /* CREATE MAIN MODULE */
@@ -123,6 +116,7 @@ PyMODINIT_FUNC PyInit_compaqt(void) {
     if (
         settings        == NULL ||
         types           == NULL ||
+
         EncodingError   == NULL ||
         DecodingError   == NULL ||
         ValidationError == NULL ||
@@ -132,6 +126,7 @@ PyMODINIT_FUNC PyInit_compaqt(void) {
         // Cleanup any successfully created types and return NULL
         Py_XDECREF(settings);
         Py_XDECREF(types);
+
         Py_XDECREF(EncodingError);
         Py_XDECREF(DecodingError);
         Py_XDECREF(ValidationError);

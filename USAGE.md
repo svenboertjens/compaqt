@@ -440,13 +440,13 @@ The amount of bytes to allocate as extra space when the currently allocated buff
 
 ## Implementations
 
-Compaqt provides both a C implementation and a Pure-Python version. The C implementation is used by default, when available.
+Compaqt provides both a C implementation and a Pure Python version. The C implementation is used by default, when available.
 
-If you want to use a specific implementation, you can use `compaqt.__compaqt_C` and `compaqt.__compaqt_Py`. The methods are available through that namespace, so for example the Python implementation's `encode` can be accessed through `compaqt.__compaqt_Py.encode(...)`.
+To always use the Python version, you can set `COMPAQT_PY_IMPL=1` before installing the module. This will skip attempting to build the C implementation, so that the Python implementation will be used. To install Compaqt like this, you can do `COMPAQT_PY_IMPL=1 pip install compaqt`.
 
-The `__compaqt_C` namespace will be set to `None` when using the Python implementation due to the C version not being found.
+If you want to use the C implementation and fail the setup when building the module fails, install the module with `COMPAQT_C_IMPL=1 pip install compaqt`.
 
-By default, Compaqt will set an `ImportWarning` (not throwing an exception) when the C implementation isn't found. This warning can be suppressed as follows:
+By default, Compaqt will set an `ImportWarning` (not an exception) when the C implementation isn't found. This warning can be suppressed as follows:
 
 ```python
 import warnings

@@ -44,8 +44,6 @@ file_name = 'dir/file.bin'
 
 # Pass the filename to the function to write it to said file, instead of having the function return the bytes back directly
 compaqt.encode(value, file_name=file_name)
-
-# Do stuff
 ...
 
 # Now, we want to read the value back from the file.
@@ -55,7 +53,7 @@ value = compaqt.decode(file_name=file_name)
 
 For more advanced streaming functionality, we can use the `StreamEncoder` and `StreamDecoder` classes. These support incremental reading and writing, and internally use chunk processing to optimize memory usage.
 
-Apart from serialization, if we need to be sure that some bytes are valid, we can verify the validity of them using the `validate` method. This supports both direct verification and through streaming, and for streaming also supports all advanced file management features from the `StreamEncoder` and `StreamDecoder` objects. This method also has *optional* chunk processing when streaming.
+Apart from serialization, if we need to be sure that any encoded data is valid, we can verify the validity of them using the `validate` method. This supports both direct verification and through streaming, and for streaming also supports all advanced file management features from the `StreamEncoder` and `StreamDecoder` objects. This method also has *optional* chunk processing when streaming.
 
 
 For further details on how to use this library, please consult the [USAGE](https://github.com/svenboertjens/compaqt/blob/main/USAGE.md).
@@ -66,7 +64,7 @@ For further details on how to use this library, please consult the [USAGE](https
 To install this module for Python, simply run this:
 `pip install compaqt`
 
-For cases where C code cannot be compiled or used, a Python fallback is implemented, which is automatically used if the C implementation fails.
+For cases where the C implementation cannot be used, a Pure Python fallback is implemented and automatically used when the C implementation fails.
 
 
 ## License

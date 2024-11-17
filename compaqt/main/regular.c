@@ -1,52 +1,57 @@
 // This file contains the regular serialization methods
 
 #include <Python.h>
-#include "metadata.h"
+
 #include "main/serialization.h"
-#include "exceptions.h"
+
+#include "globals/exceptions.h"
+#include "globals/buftricks.h"
+#include "globals/typemasks.h"
+#include "globals/metadata.h"
+#include "globals/typedefs.h"
+
+#include "settings/allocations.h"
+
+#include "types/usertypes.h"
+
 
 /* ENCODING */
 
-typedef struct {
-    char *msg;
-    size_t offset;
-    size_t allocated;
-    int reallocs;
-} encode_t;
-
-static inline int offset_check(buffer_t *b, const size_t length)
+int offset_check(reg_encode_t *b, const size_t length)
 {
-    if (b->offset + length > b->allocated)
+    if (b->offset + length > b->max_offset)
     {
-        ((encode_t *)(b))->reallocs++;
+        const size_t new_length = BUF_GET_OFFSET + length + avg_realloc_size;
 
-        const size_t new_length = b->offset + length + avg_realloc_size;
-
-        char *tmp = (char *)realloc(b->msg, new_length);
+        char *tmp = (char *)realloc(b->base, new_length);
         if (tmp == NULL)
         {
             PyErr_NoMemory();
             return 1;
         }
-        b->allocated = new_length;
-        b->msg = tmp;
+
+        b->offset = tmp + BUF_GET_OFFSET;
+        b->max_offset = tmp + new_length;
+        b->base = tmp;
+
+        ++(b->reallocs);
     }
 
     return 0;
 }
 
-static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *type, custom_types_wr_ob *custom_ob, const int stream_compatible)
+static inline int encode_container(reg_encode_t *b, PyObject *cont, PyTypeObject *type, const int stream_compatible)
 {
     size_t num_items = Py_SIZE(cont);
     size_t initial_alloc;
 
     if (type == &PyList_Type)
     {
-        initial_alloc = num_items * avg_item_size + avg_realloc_size;
-        b->msg = (char *)malloc(initial_alloc);
-        b->allocated = initial_alloc;
+        initial_alloc = (num_items * avg_item_size) + avg_realloc_size;
+        b->base = b->offset = (char *)malloc(initial_alloc);
+        b->max_offset = b->base + initial_alloc;
 
-        if (b->msg == NULL)
+        if (b->base == NULL)
         {
             PyErr_NoMemory();
             return 1;
@@ -54,26 +59,26 @@ static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *ty
 
         if (stream_compatible == 0)
         {
-            WR_METADATA(b->msg, b->offset, DT_ARRAY, num_items);
+            WR_METADATA(b->offset, DT_ARRAY, num_items);
         }
         else
         {
             // Write LM2 metadata if it needs to be streaming compatible
-            WR_METADATA_LM2_MASK(b->msg, b->offset, DT_ARRAY, 8);
-            WR_METADATA_LM2(b->msg, b->offset, num_items, 8);
+            WR_METADATA_LM2_MASK(b->offset, DT_ARRAY, 8);
+            WR_METADATA_LM2(b->offset, num_items, 8);
         }
 
         for (size_t i = 0; i < num_items; ++i)
-            if (encode_item((buffer_t *)b, PyList_GET_ITEM(cont, i), custom_ob, offset_check) == 1) return 1;
+            if (encode_object((encode_t *)b, PyList_GET_ITEM(cont, i)) == 1) return 1;
     }
     else
     {
         // Allocate for twice as many items as we have pairs of keys and values
-        initial_alloc = (num_items << 1) * avg_item_size + avg_realloc_size;
-        b->msg = (char *)malloc(initial_alloc);
-        b->allocated = initial_alloc;
+        initial_alloc = (num_items * 2 * avg_item_size) + avg_realloc_size;
+        b->base = b->offset = (char *)malloc(initial_alloc);
+        b->max_offset = b->base + initial_alloc;
 
-        if (b->msg == NULL)
+        if (b->base == NULL)
         {
             PyErr_NoMemory();
             return 1;
@@ -81,13 +86,13 @@ static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *ty
 
         if (stream_compatible == 0)
         {
-            WR_METADATA(b->msg, b->offset, DT_DICTN, num_items);
+            WR_METADATA(b->offset, DT_DICTN, num_items);
         }
         else
         {
             // Write LM2 metadata if it needs to be streaming compatible
-            WR_METADATA_LM2_MASK(b->msg, b->offset, DT_DICTN, 8);
-            WR_METADATA_LM2(b->msg, b->offset, num_items, 8);
+            WR_METADATA_LM2_MASK(b->offset, DT_DICTN, 8);
+            WR_METADATA_LM2(b->offset, num_items, 8);
         }
 
         num_items <<= 1;
@@ -98,12 +103,12 @@ static inline int encode_container(encode_t *b, PyObject *cont, PyTypeObject *ty
 
         while (PyDict_Next(cont, &pos, &key, &val))
         {
-            if (encode_item((buffer_t *)b, key, custom_ob, offset_check) == 1) return 1;
-            if (encode_item((buffer_t *)b, val, custom_ob, offset_check) == 1) return 1;
+            if (encode_object((encode_t *)b, key) == 1) return 1;
+            if (encode_object((encode_t *)b, val) == 1) return 1;
         }
     }
 
-    update_allocation_settings(b->reallocs, b->offset, initial_alloc, num_items);
+    update_allocation_settings(b->reallocs, BUF_GET_OFFSET, initial_alloc, num_items);
     return 0;
 }
 
@@ -134,7 +139,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     char *filename = NULL;
-    custom_types_wr_ob *custom_ob = NULL;
+    utypes_encode_ob *utypes = NULL;
     int stream_compatible = 0;
 
     // Check if we received kwargs
@@ -160,11 +165,11 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
                 goto kwargs_parse_end;
         }
 
-        custom_ob = (custom_types_wr_ob *)PyDict_GetItemString(kwargs, "custom_types");
+        utypes = (utypes_encode_ob *)PyDict_GetItemString(kwargs, "custom_types");
 
-        if (custom_ob != NULL && Py_TYPE(custom_ob) != &custom_types_wr_t)
+        if (utypes != NULL && Py_TYPE(utypes) != &utypes_encode_t)
         {
-            PyErr_Format(PyExc_ValueError, "The 'custom_types' argument must be of type 'compaqt.CustomWriteTypes', got '%s'", Py_TYPE(custom_ob)->tp_name);
+            PyErr_Format(PyExc_ValueError, "The 'custom_types' argument must be of type 'compaqt.CustomWriteTypes', got '%s'", Py_TYPE(utypes)->tp_name);
             return NULL;
         }
         else if (--remaining == 0)
@@ -183,10 +188,11 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
 
     /* END OF CUSTOM PARSING */
     
-    encode_t b;
+    reg_encode_t b;
 
-    b.offset = 0;
     b.reallocs = 0;
+    b.bufcheck = (bufcheck_t)offset_check;
+    b.utypes = utypes;
 
     // See if we got a list or dict type
     PyTypeObject *type = Py_TYPE(value);
@@ -194,9 +200,9 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     if (type == &PyList_Type || type == &PyDict_Type)
     {
         // This manages the initial buffer allocation itself
-        if (encode_container(&b, value, type, custom_ob, stream_compatible) == 1)
+        if (encode_container(&b, value, type, stream_compatible) == 1)
         {
-            free(b.msg);
+            free(b.base);
             return NULL;
         }
     }
@@ -204,12 +210,13 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     {
         // Set the message to NULL and 0 allocation space to let `encode_item` handle the initial alloc using its overwrite checks
         // Realloc accepts NULL and will treat it as a malloc call
-        b.msg = NULL;
-        b.allocated = 0;
+        b.base = (char *)malloc(Py_SIZE(value));
+        b.offset = b.base;
+        b.max_offset = b.base + Py_SIZE(value);
 
-        if (encode_item((buffer_t *)(&b), value, custom_ob, offset_check) == 1)
+        if (encode_object((encode_t *)&b, value) == 1)
         {
-            free(b.msg);
+            free(b.base);
             return NULL;
         }
     }
@@ -222,31 +229,31 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
         if (file == NULL)
         {
             PyErr_Format(PyExc_FileNotFoundError, "Unable to open/create file '%s'", filename);
-            free(b.msg);
+            free(b.base);
             return NULL;
         }
 
-        fwrite(b.msg, 1, b.offset, file);
+        fwrite(b.base, 1, (size_t)(b.offset - b.base), file);
         fclose(file);
         
-        free(b.msg);
+        free(b.base);
         Py_RETURN_NONE;
     }
 
     // Otherwise return as a Python bytes object
-    PyObject *result = PyBytes_FromStringAndSize(b.msg, b.offset);
+    PyObject *result = PyBytes_FromStringAndSize(b.base, b.offset - b.base);
     
-    free(b.msg);
+    free(b.base);
     return result;
 }
 
 /* DECODING */
 
-static inline int overread_check(buffer_t *b, const size_t length)
+static inline int overread_check(decode_t *b, const size_t length)
 {
-    if (b->offset + length > b->allocated)
+    if (b->offset + length > b->max_offset)
     {
-        PyErr_SetString(DecodingError, "Received an invalid or corrupted bytes string");
+        PyErr_SetString(DecodingError, "Received invalid or corrupted bytes");
         return 1;
     }
 
@@ -264,12 +271,14 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
       # Kwargs:
       - file_name;
       - custom_types;
+      - referenced;
 
     */
 
     PyObject *value = NULL;
     char *filename = NULL;
-    custom_types_rd_ob *custom_ob = NULL;
+    utypes_decode_ob *utypes = NULL;
+    int referenced = 0;
 
     if (PyTuple_GET_SIZE(args) != 0)
     {
@@ -285,6 +294,10 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
     if (kwargs != NULL)
     {
         size_t remaining = PyDict_GET_SIZE(kwargs);
+
+        referenced = PyDict_GetItemString(kwargs, "referenced") == Py_True;
+        if (--remaining == 0)
+                goto kwargs_parse_end;
 
         if (value == NULL)
         {
@@ -321,12 +334,15 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
                 goto kwargs_parse_end;
         }
         
-        custom_ob = (custom_types_rd_ob *)PyDict_GetItemString(kwargs, "custom_types");
+        utypes = (utypes_decode_ob *)PyDict_GetItemString(kwargs, "custom_types");
 
-        if (custom_ob != NULL && Py_TYPE(custom_ob) != &custom_types_rd_t)
+        if (utypes != NULL && Py_TYPE(utypes) != &utypes_decode_t)
         {
-            PyErr_Format(PyExc_ValueError, "The 'custom_types' argument must be of type 'compaqt.CustomReadTypes', got '%s'", Py_TYPE(custom_ob)->tp_name);
-            return NULL;
+            if (Py_TYPE(utypes) != &utypes_decode_t)
+            {
+                PyErr_Format(PyExc_ValueError, "The 'custom_types' argument must be of type 'compaqt.CustomReadTypes', got '%s'", Py_TYPE(utypes)->tp_name);
+                return NULL;
+            }
         }
     }
 
@@ -334,18 +350,22 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 
     /* END OF CUSTOM PARSING */
     
-    buffer_t b;
+    decode_t b;
 
     // Read from the value if one is given
     if (value != NULL)
     {
-        PyBytes_AsStringAndSize(value, &b.msg, (Py_ssize_t *)&b.allocated);
+        Py_ssize_t size;
+        PyBytes_AsStringAndSize(value, &b.base, &size);
 
-        if (b.allocated == 0)
+        if (size == 0)
         {
-            PyErr_SetString(PyExc_ValueError, "Received an invalid or corrupted bytes string");
+            PyErr_SetString(PyExc_ValueError, "Received an empty bytes object");
             return NULL;
         }
+
+        b.offset = b.base;
+        b.max_offset = b.base + size;
     }
     else if (filename != NULL)
     {
@@ -367,7 +387,13 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         // The amount to allocate is the size of the file
-        b.allocated = ftell(file);
+        const size_t size = ftell(file);
+
+        if (size == 0)
+        {
+            PyErr_SetString(PyExc_ValueError, "Received an empty file");
+            return NULL;
+        }
 
         // Go back to the start of the file to read its contents
         if (fseek(file, 0, SEEK_SET) != 0)
@@ -377,8 +403,8 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
         }
 
-        b.msg = (char *)malloc(b.allocated);
-        if (b.msg == NULL)
+        b.base = (char *)malloc(size);
+        if (b.base == NULL)
         {
             PyErr_NoMemory();
             fclose(file);
@@ -386,8 +412,11 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
         }
         
         // Copy the file content into the allocated message buffer
-        fread(b.msg, 1, b.allocated, file);
+        fread(b.base, 1, size, file);
         fclose(file);
+
+        b.offset = b.base;
+        b.max_offset = b.base + size;
     }
     else
     {
@@ -395,12 +424,39 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    b.offset = 0;
+    if (referenced == 1)
+    {
+        b.bufd = (bufdata_t *)PyObject_Malloc(sizeof(bufdata_t));
 
-    PyObject *result = decode_item(&b, custom_ob, overread_check);
+        if (b.bufd == NULL)
+            return PyErr_NoMemory();
+        
+        if (value == NULL)
+        {
+            b.bufd->base = b.base;
+            b.bufd->is_PyOb = 0;
+        }
+        else
+        {
+            Py_INCREF(value);
+            b.bufd->base = (void *)value;
+            b.bufd->is_PyOb = 1;
+        }
+        
+        b.bufd->refcnt = 0;
+    }
+    else
+    {
+        b.bufd = NULL;
+    }
 
-    if (value == NULL)
-        free(b.msg);
+    b.bufcheck = (bufcheck_t)overread_check;
+
+    PyObject *result = decode_bytes(&b);
+
+    // Free the buffer if we read from a file AND aren't referencing the buffer
+    if (value == NULL && referenced == 0)
+        free(b.base);
     
     return result;
 }

@@ -1,5 +1,11 @@
 #include <Python.h>
-#include "metadata.h"
+
+#define AVG_REALLOC_MIN 64
+#define AVG_ITEM_MIN 4
+
+size_t avg_item_size = 12;
+size_t avg_realloc_size = 128;
+int dynamic_allocation_tweaks = 1;
 
 // Function to set manual allocation settings
 PyObject *manual_allocations(PyObject *self, PyObject *args)
@@ -49,3 +55,36 @@ PyObject *dynamic_allocations(PyObject *self, PyObject *args, PyObject *kwargs)
 
     Py_RETURN_NONE;
 }
+
+extern inline void update_allocation_settings(const int reallocs, const size_t offset, const size_t initial_allocated, const size_t num_items)
+{
+    if (dynamic_allocation_tweaks == 1)
+    {
+        if (reallocs != 0)
+        {
+            const size_t difference = offset - initial_allocated;
+            const size_t med_diff = difference / (num_items + 1);
+
+            avg_realloc_size += difference >> 1;
+            avg_item_size += med_diff >> 1;
+        }
+        else
+        {
+            const size_t difference = initial_allocated - offset;
+            const size_t med_diff = difference / (num_items + 1);
+            const size_t diff_small = difference >> 4;
+            const size_t med_small = med_diff >> 5;
+
+            if (diff_small + AVG_REALLOC_MIN < avg_realloc_size)
+                avg_realloc_size -= diff_small;
+            else
+                avg_realloc_size = AVG_REALLOC_MIN;
+
+            if (med_small + AVG_ITEM_MIN < avg_item_size)
+                avg_item_size -= med_small;
+            else
+                avg_item_size = AVG_ITEM_MIN;
+        }
+    }
+}
+

@@ -54,9 +54,9 @@ class StreamEncoder:
     Returns an Encoding Stream object to update the stream with.
     """
     
-    def __init__(self, file_name: str, value_type: type=list, chunk_size: int=1024*256, custom_types: CustomWriteTypes=None, resume_stream: bool=False, file_offset: int=0, preserve_file: bool=False) -> self:
+    def __init__(self, file_name: str, value_type: type=list, chunk_size: int=1024*32, custom_types: CustomWriteTypes=None, resume_stream: bool=False, file_offset: int=0, preserve_file: bool=False) -> self:
         self.start_offset: int = ...
-        self.total_offset: int = ...
+        self.curr_offset: int = ...
         ...
     
     def write(self, value: any, clear_memory: bool=False, chunk_size: int=...) -> None:
@@ -89,8 +89,9 @@ class StreamDecoder:
     Returns a Decoding Stream object to (progressively) read values with.
     """
     
-    def __init__(self, file_name: str, chunk_size: int=1024*256, custom_types: CustomReadTypes=None, file_offset: int=0) -> self:
-        self.total_offset: int = ...
+    def __init__(self, file_name: str, chunk_size: int=1024*32, custom_types: CustomReadTypes=None, file_offset: int=0) -> self:
+        self.start_offset: int = ...
+        self.curr_offset: int = ...
         self.items_remaining: int = ...
         ...
     
@@ -138,7 +139,7 @@ class types:
     """Contains type control for the serialization process
     """
     
-    def encoder_types(custom_types: {type: (int, function)}) -> CustomWriteTypes:
+    def encoder_types(custom_types: {int: (type, function)}) -> CustomWriteTypes:
         """Use custom types in encode functions.
         
         The `custom_types` is a dict object where the key should be the custom type.

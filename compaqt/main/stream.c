@@ -2,13 +2,13 @@
 
 #include <Python.h>
 
-#include "globals/metadata.h"
+#include "main/serialization.h"
+
 #include "globals/exceptions.h"
 #include "globals/typemasks.h"
 #include "globals/buftricks.h"
 #include "globals/typedefs.h"
-
-#include "main/serialization.h"
+#include "globals/metadata.h"
 
 #include "types/usertypes.h"
 
@@ -112,22 +112,17 @@ static PyObject *update_encoder(stream_encode_ob *ob, PyObject *args, PyObject *
         b->chunk_size = chunk_size;
 
         if (b->base == NULL)
-        {
-            PyErr_NoMemory();
-            return NULL;
-        }
+            return PyErr_NoMemory();
     }
     else if (b->base == NULL)
     {
         b->base = (char *)malloc(b->chunk_size);
+
         if (b->base == NULL)
-        {
-            PyErr_NoMemory();
-            return NULL;
-        }
+            return PyErr_NoMemory();
     }
 
-    BUF_INIT_OFFSETS(chunk_size);
+    BUF_INIT_OFFSETS(b->chunk_size);
 
     // Open the file for writing in binary append mode
     b->file = fopen(b->filename, "ab");
@@ -504,7 +499,7 @@ static PyObject *update_decoder(stream_decode_ob *ob, PyObject *args, PyObject *
 
     PyArg_ParseTupleAndKeywords(args, kwargs, "|nin", kwlist, (Py_ssize_t *)&num_items, &clear_memory, (Py_ssize_t *)&chunk_size);
 
-    // Limit the number of items to the max available. Don't throw error as the `exhausted` class variable will indicate exhaustion
+    // Limit the number of items to the max available. Don't throw error as the items-remaining variable will state 0 remaining
     if (num_items > b->num_items)
         num_items = b->num_items;
     
@@ -532,6 +527,8 @@ static PyObject *update_decoder(stream_decode_ob *ob, PyObject *args, PyObject *
             return PyErr_NoMemory();
     }
 
+    BUF_INIT_OFFSETS(b->chunk_size);
+
     b->file = fopen(b->filename, "rb");
 
     if (b->file == NULL)
@@ -555,8 +552,6 @@ static PyObject *update_decoder(stream_decode_ob *ob, PyObject *args, PyObject *
         fclose(b->file);
         return NULL;
     }
-
-    b->offset = 0;
 
     PyObject *result;
 
@@ -703,7 +698,7 @@ PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
     RD_METADATA(buf_ptr, num_items);
 
     // Add the offset to start after the metadata, so at the first value
-    b->curr_offset += buf_ptr - buf;
+    b->curr_offset = buf_ptr - buf;
     b->num_items = num_items;
 
     return (PyObject *)ob;

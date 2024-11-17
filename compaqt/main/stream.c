@@ -43,7 +43,7 @@ static inline int flush_chunk(stream_encode_t *b)
 
 static inline int flush_check(stream_encode_t *b, const size_t length)
 {
-    if (b->offset + length > b->max_offset)
+    if (b->offset + length >= b->max_offset)
     {
         /* Check whether the length doesn't exceed the chunk limit on its own */
         if (length > BUF_GET_LENGTH)

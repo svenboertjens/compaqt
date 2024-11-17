@@ -19,7 +19,7 @@
 
 int offset_check(reg_encode_t *b, const size_t length)
 {
-    if (b->offset + length > b->max_offset)
+    if (b->offset + length >= b->max_offset)
     {
         const size_t new_length = BUF_GET_OFFSET + length + avg_realloc_size;
 
@@ -208,11 +208,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
     }
     else
     {
-        // Set the message to NULL and 0 allocation space to let `encode_item` handle the initial alloc using its overwrite checks
-        // Realloc accepts NULL and will treat it as a malloc call
-        b.base = (char *)malloc(Py_SIZE(value));
-        b.offset = b.base;
-        b.max_offset = b.base + Py_SIZE(value);
+        b.base = b.offset = b.max_offset = NULL;
 
         if (encode_object((encode_t *)&b, value) == 1)
         {
@@ -296,7 +292,7 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
         size_t remaining = PyDict_GET_SIZE(kwargs);
 
         referenced = PyDict_GetItemString(kwargs, "referenced") == Py_True;
-        if (--remaining == 0)
+        if (referenced == 1 && --remaining == 0)
                 goto kwargs_parse_end;
 
         if (value == NULL)
@@ -367,8 +363,10 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
         b.offset = b.base;
         b.max_offset = b.base + size;
     }
-    else if (filename != NULL)
+    else
     {
+        if (filename == NULL)
+            printf("is null 2\n");
         // Otherwise read from the file if given
         FILE *file = fopen(filename, "rb");
 
@@ -417,11 +415,6 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
 
         b.offset = b.base;
         b.max_offset = b.base + size;
-    }
-    else
-    {
-        PyErr_SetString(PyExc_ValueError, "Expected either the 'value' or 'filename' argument, got neither");
-        return NULL;
     }
 
     if (referenced == 1)

@@ -56,14 +56,14 @@ PyObject *dynamic_allocations(PyObject *self, PyObject *args, PyObject *kwargs)
     Py_RETURN_NONE;
 }
 
-extern inline void update_allocation_settings(const int reallocs, const size_t offset, const size_t initial_allocated, const size_t num_items)
+extern inline void update_allocation_settings(const int reallocs, const size_t offset, const size_t initial_allocated, const size_t nitems)
 {
     if (dynamic_allocation_tweaks == 1)
     {
         if (reallocs != 0)
         {
             const size_t difference = offset - initial_allocated;
-            const size_t med_diff = difference / (num_items + 1);
+            const size_t med_diff = difference / (nitems + 1);
 
             avg_realloc_size += difference >> 1;
             avg_item_size += med_diff >> 1;
@@ -71,7 +71,7 @@ extern inline void update_allocation_settings(const int reallocs, const size_t o
         else
         {
             const size_t difference = initial_allocated - offset;
-            const size_t med_diff = difference / (num_items + 1);
+            const size_t med_diff = difference / (nitems + 1);
             const size_t diff_small = difference >> 4;
             const size_t med_small = med_diff >> 5;
 

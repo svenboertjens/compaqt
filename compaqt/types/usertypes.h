@@ -10,7 +10,7 @@ extern PyTypeObject utypes_decode_t;
 PyObject *get_utypes_encode_ob(PyObject *self, PyObject *args);
 PyObject *get_utypes_decode_ob(PyObject *self, PyObject *args);
 
-inline int encode_custom(encode_t *b, PyObject *value);
-inline PyObject *decode_custom(decode_t *b);
+int encode_custom(encode_t *b, PyObject *value);
+PyObject *decode_custom(decode_t *b);
 
 #endif // USERTYPES_H

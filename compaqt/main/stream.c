@@ -8,7 +8,6 @@
 #include "globals/typemasks.h"
 #include "globals/buftricks.h"
 #include "globals/typedefs.h"
-#include "globals/metadata.h"
 
 #include "types/usertypes.h"
 
@@ -61,12 +60,12 @@ static inline int flush_check(stream_encode_t *b, const size_t length)
 // Encode a list type
 static inline int encode_list(stream_encode_t *b, PyObject *value)
 {
-    const size_t num_items = PyList_GET_SIZE(value);
+    const size_t nitems = PyList_GET_SIZE(value);
     
-    for (size_t i = 0; i < num_items; ++i)
+    for (size_t i = 0; i < nitems; ++i)
         if (encode_object((encode_t *)b, PyList_GET_ITEM(value, i)) == 1) return 1;
 
-    b->num_items += num_items;
+    b->nitems += nitems;
     return 0;
 }
 
@@ -78,7 +77,7 @@ static inline int encode_dict(stream_encode_t *b, PyObject *value)
     while (PyDict_Next(value, &pos, &key, &val))
         if (encode_object((encode_t *)b, key) == 1 || encode_object((encode_t *)b, val) == 1) return 1;
 
-    b->num_items += PyDict_GET_SIZE(value);
+    b->nitems += PyDict_GET_SIZE(value);
     return 0;
 }
 
@@ -175,12 +174,10 @@ static PyObject *update_encoder(stream_encode_ob *ob, PyObject *args, PyObject *
     }
 
     // Write the number of items metadata to the file
-    char num_items_buf[8];
-    char *buf_ptr = num_items_buf;
-    size_t offset = 0;
+    char nitems_buf[8];
+    memcpy(nitems_buf, &b->nitems, 8);
 
-    WR_METADATA_LM2(buf_ptr, b->num_items, 8);
-    fwrite(num_items_buf, 8, 1, b->file);
+    fwrite(nitems_buf, 8, 1, b->file);
     fclose(b->file);
 
     b->curr_offset += BUF_GET_OFFSET;
@@ -201,7 +198,6 @@ static void encoder_dealloc(stream_encode_ob *ob)
 
 static PyObject *start_offset_encoder(stream_encode_ob *ob)
 {
-    stream_encode_t *b = &ob->b;
     return PyLong_FromSize_t(ob->b.start_offset);
 }
 
@@ -308,10 +304,10 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         // Read the container datatype
-        const char datachar = *buf & 0b00000111;
+        const char tpmask = *buf & 0b00000111;
 
-        // The MODE 2 8-byte length metadata is equal to `0b11111000`
-        if ((*buf & 0b11111000) != 0b11111000 || (datachar != DT_ARRAY && datachar != DT_DICTN))
+        // The mode-3 8-byte length metadata is equal to `0b11111000`
+        if ((*buf & 0b11111000) != 0b11111000 || (tpmask != DT_ARRAY && tpmask != DT_DICTN))
         {
             PyErr_SetString(PyExc_ValueError, "The existing file data does not match the encoding stream expectations");
             fclose(file);
@@ -319,11 +315,8 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
         }
         
-        b->type = datachar == DT_ARRAY ? &PyList_Type : &PyDict_Type;
-
-        // Rebuild the value in the metadata MODE 2 format
-        char *buf_ptr = buf + 1;
-        RD_METADATA_LM2(buf_ptr, b->num_items, 8);
+        b->type = tpmask == DT_ARRAY ? &PyList_Type : &PyDict_Type;
+        memcpy(&b->nitems, buf + 1, 8);
 
         fclose(file);
     }
@@ -364,17 +357,22 @@ PyObject *get_stream_encoder(PyObject *self, PyObject *args, PyObject *kwargs)
             }
         }
 
-        // Write the first metadata byte in the way in mode 2 8-bytes format
-        char buf[9] = {0};
-        char *buf_ptr = buf;
-        const char datachar = value_type == &PyList_Type ? DT_ARRAY : DT_DICTN;
-        WR_METADATA_LM2_MASK(buf_ptr, datachar, 8);
+        /*  Write the extendable metadata to the file in advance. Initialize it with
+         *  zero items; that number will be updated as new values are written.
+         */
 
-        fwrite(&buf, 9, 1, file);
+        const unsigned char tpmask = value_type == &PyList_Type ? DT_ARRAY : DT_DICTN;
+
+        char buf[9];
+        b->offset = buf; // Set the buffer to the struct for metadata method compatability
+        
+        METADATA_VARLEN_WR_MODE3(tpmask, 0, 8);
+
+        fwrite(buf, 9, 1, file);
         fclose(file);
 
         b->type = value_type;
-        b->num_items = 0;
+        b->nitems = 0;
     }
 
     return (PyObject *)ob;
@@ -422,9 +420,9 @@ static inline int chunk_refresh_check(stream_decode_t *b, const size_t length)
     return 0;
 }
 
-static inline PyObject *decode_list(stream_decode_t *b, const size_t num_items)
+static inline PyObject *decode_list(stream_decode_t *b, const size_t nitems)
 {
-    PyObject *list = PyList_New(num_items);
+    PyObject *list = PyList_New(nitems);
 
     if (list == NULL)
     {
@@ -432,7 +430,7 @@ static inline PyObject *decode_list(stream_decode_t *b, const size_t num_items)
         return NULL;
     }
 
-    for (size_t i = 0; i < num_items; ++i)
+    for (size_t i = 0; i < nitems; ++i)
     {
         PyObject *val = decode_bytes((decode_t *)b);
 
@@ -445,12 +443,12 @@ static inline PyObject *decode_list(stream_decode_t *b, const size_t num_items)
         PyList_SET_ITEM(list, i, val);
     }
 
-    b->num_items -= num_items;
+    b->nitems -= nitems;
 
     return list;
 }
 
-static inline PyObject *decode_dict(stream_decode_t *b, const size_t num_items)
+static inline PyObject *decode_dict(stream_decode_t *b, const size_t nitems)
 {
     PyObject *dict = PyDict_New();
 
@@ -460,7 +458,7 @@ static inline PyObject *decode_dict(stream_decode_t *b, const size_t num_items)
         return NULL;
     }
 
-    for (size_t i = 0; i < num_items; ++i)
+    for (size_t i = 0; i < nitems; ++i)
     {
         PyObject *key = decode_bytes((decode_t *)b);
 
@@ -482,7 +480,7 @@ static inline PyObject *decode_dict(stream_decode_t *b, const size_t num_items)
         PyDict_SetItem(dict, key, val);
     }
 
-    b->num_items -= num_items;
+    b->nitems -= nitems;
 
     return dict;
 }
@@ -491,20 +489,20 @@ static PyObject *update_decoder(stream_decode_ob *ob, PyObject *args, PyObject *
 {
     stream_decode_t *b = &ob->b;
 
-    size_t num_items = b->num_items;
+    size_t nitems = b->nitems;
     int clear_memory = 0;
     size_t chunk_size = 0;
 
     static char *kwlist[] = {"num_items", "clear_memory", "chunk_size", NULL};
 
-    PyArg_ParseTupleAndKeywords(args, kwargs, "|nin", kwlist, (Py_ssize_t *)&num_items, &clear_memory, (Py_ssize_t *)&chunk_size);
+    PyArg_ParseTupleAndKeywords(args, kwargs, "|nin", kwlist, (Py_ssize_t *)&nitems, &clear_memory, (Py_ssize_t *)&chunk_size);
 
     // Limit the number of items to the max available. Don't throw error as the items-remaining variable will state 0 remaining
-    if (num_items > b->num_items)
-        num_items = b->num_items;
+    if (nitems > b->nitems)
+        nitems = b->nitems;
     
     // Return an empty object is the number of items to read is zero
-    if (num_items == 0)
+    if (nitems == 0)
         return b->type == &PyList_Type ? PyList_New(0) : PyDict_New();
     
     // Check if the chunk size was changed
@@ -556,9 +554,9 @@ static PyObject *update_decoder(stream_decode_ob *ob, PyObject *args, PyObject *
     PyObject *result;
 
     if (b->type == &PyList_Type)
-        result = decode_list(b, num_items);
+        result = decode_list(b, nitems);
     else
-        result = decode_dict(b, num_items);
+        result = decode_dict(b, nitems);
     
     b->curr_offset += BUF_GET_OFFSET;
 
@@ -578,7 +576,7 @@ static void decoder_dealloc(stream_decode_ob *ob)
 
 static PyObject *items_remaining_decoder(stream_decode_ob *ob)
 {
-    return PyLong_FromSize_t(ob->b.num_items);
+    return PyLong_FromSize_t(ob->b.nitems);
 }
 
 static PyObject *start_offset_decoder(stream_encode_ob *ob)
@@ -679,11 +677,11 @@ PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
     fclose(file);
 
     // Get which datatype we have stored
-    const char dt_mask = buf[0] & 0b00000111;
+    const char tpmask = buf[0] & 0b111;
 
-    if (dt_mask == DT_ARRAY)
+    if (tpmask == DT_ARRAY)
         b->type = &PyList_Type;
-    else if (dt_mask == DT_DICTN)
+    else if (tpmask == DT_DICTN)
         b->type = &PyDict_Type;
     else
     {
@@ -692,14 +690,12 @@ PyObject *get_stream_decoder(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    // Read the number of items
-    size_t num_items = 0;
-    char *buf_ptr = buf;
-    RD_METADATA(buf_ptr, num_items);
+    // Set the buffer to the offset of the decode struct for using it in the metadata macro
+    b->offset = buf;
+    METADATA_VARLEN_RD(b->nitems);
 
-    // Add the offset to start after the metadata, so at the first value
-    b->curr_offset = buf_ptr - buf;
-    b->num_items = num_items;
+    // Calculate the current offset based on the increment of the offset
+    b->curr_offset = b->start_offset + ((size_t)b->offset - (size_t)buf);
 
     return (PyObject *)ob;
 }

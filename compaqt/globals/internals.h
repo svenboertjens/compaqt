@@ -91,6 +91,6 @@
 #endif
 
 // Count the number of used bytes in a 64-bit unsigned integer
-#define USED_BYTES_64(x) (8 - (LEADING_ZEROES_64(x) >> 3))
+#define USED_BYTES_64(x) (x == 0 ? 1 : 8 - (LEADING_ZEROES_64(x) >> 3))
 
 #endif // INTERNALS_H

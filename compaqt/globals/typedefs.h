@@ -27,32 +27,29 @@ typedef struct {
 } bufdata_t;
 
 
+// Key-value pair struct for the hash table
 typedef struct {
     PyTypeObject *key;
     PyObject *val;
 } keyval_t;
 
+// Maximum number of slots in the hash table
+#define HASH_TABLE_SLOTS 32
+
 typedef struct {
-    uint8_t offsets[32];
-    uint8_t lengths[32];
-    uint8_t idxs[32];
-    keyval_t keyvals[];
+    uint8_t offsets[HASH_TABLE_SLOTS]; // Holds the hash table offsets based on the hash value
+    uint8_t lengths[HASH_TABLE_SLOTS]; // Holds the chain length of each hash value
+    uint8_t idxs[HASH_TABLE_SLOTS];    // Holds the indexes to the `keyvals` pairs, indexed based on the hash
+    keyval_t keyvals[]; // Key-value pairs of the hash
 } hash_table_t;
 
-/*  The write object stores only the used types to limit
- *  memory usage and the iterations needed for matching a
- *  custom type.
- *  
- *  The read object allocates the full 32 slots and sets
- *  the unused slots to NULL to allow fast index-based
- *  access after reading the index from the metadata.
-*/
-
+// Usertypes encode object struct
 typedef struct {
     PyObject_HEAD
     hash_table_t *table; // Hash table containing all data
 } utypes_encode_ob;
 
+// Usertypes decode object struct
 typedef struct {
     PyObject_HEAD
     PyObject **reads; // The read functions of the types
@@ -102,7 +99,7 @@ typedef struct {
 typedef struct {
     FILE *file;          // The currently opened file
     char *filename;      // The filename
-    size_t num_items;    // Number of items written/read
+    size_t nitems;       // Number of items written/read
     PyTypeObject *type;  // Object type (list or dict)
     size_t chunk_size;   // The chunk size for chunk processing
     size_t start_offset; // The start offset in the file
@@ -120,7 +117,7 @@ typedef struct {
     // `filedata_t` data
     FILE *file;
     char *filename;
-    size_t num_items;
+    size_t nitems;
     PyTypeObject *type;
     size_t chunk_size;
     size_t start_offset;
@@ -139,7 +136,7 @@ typedef struct {
     // `filedata_t` data
     FILE *file;
     char *filename;
-    size_t num_items;
+    size_t nitems;
     PyTypeObject *type;
     size_t chunk_size;
     size_t start_offset;

@@ -14,7 +14,7 @@ enc.write(test_values)
 
 cq.validate(file_name=f, err_on_invalid=True)
 dec = cq.StreamDecoder(f)
-if dec.read() == test_values:
+if dec.read() != test_values:
     print(f"Invalid decoding (1)")
 
 # Test 2 (preserve file)
@@ -27,7 +27,7 @@ offset = enc.start_offset
 cq.validate(file_name=f, err_on_invalid=True, file_offset=offset)
 
 dec = cq.StreamDecoder(f, file_offset=offset)
-if dec.read() == test_values:
+if dec.read() != test_values:
     print(f"Invalid decoding (2)")
 
 # Test 3 (file offset)
@@ -40,7 +40,7 @@ enc.write(test_values)
 cq.validate(file_name=f, err_on_invalid=True, file_offset=offset)
 
 dec = cq.StreamDecoder(f, file_offset=offset)
-if dec.read() == test_values:
+if dec.read() != test_values:
     print(f"Invalid decoding (3)")
 
 # Test 4 (incremental reading/writing)
@@ -52,9 +52,9 @@ enc.write(test_values)
 cq.validate(file_name=f, err_on_invalid=True)
 
 dec = cq.StreamDecoder(f)
-if dec.read(len(test_values)) == test_values:
+if dec.read(len(test_values)) != test_values:
     print(f"Invalid decoding (4.1)")
-if dec.read(len(test_values)) == test_values:
+if dec.read(len(test_values)) != test_values:
     print(f"Invalid decoding (4.2)")
 
 # Clean up file

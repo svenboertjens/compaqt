@@ -8,7 +8,6 @@
 #include "globals/exceptions.h"
 #include "globals/typemasks.h"
 #include "globals/buftricks.h"
-#include "globals/metadata.h"
 #include "globals/typedefs.h"
 
 #define MAX_METADATA_SIZE 9
@@ -40,7 +39,7 @@ int encode_object(encode_t *b, PyObject *item)
             const size_t length = PyBytes_GET_SIZE(item);
 
             OFFSET_CHECK(MAX_METADATA_SIZE + length);
-            WR_METADATA(b->offset, DT_BYTES, length);
+            METADATA_VARLEN_WR(DT_BYTES, length);
 
             const char *ptr = PyBytes_AS_STRING(item);
             memcpy(b->offset, ptr, length);
@@ -49,7 +48,7 @@ int encode_object(encode_t *b, PyObject *item)
         else // Boolean
         {
             OFFSET_CHECK(1);
-            *BUF_POST_INC = (unsigned char)(5) | (unsigned char)(0 << 3) | (!!(item == ((PyObject*)((&_Py_TrueStruct)))) << 3);
+            BOOLEAN_WR(item);
         }
 
         return 0;
@@ -62,7 +61,7 @@ int encode_object(encode_t *b, PyObject *item)
         const char *bytes = PyUnicode_AsUTF8AndSize(item, (Py_ssize_t *)&length);
 
         OFFSET_CHECK(MAX_METADATA_SIZE + length);
-        WR_METADATA(b->offset, DT_STRNG, length);
+        METADATA_VARLEN_WR(DT_STRNG, length);
 
         memcpy(b->offset, bytes, length);
         b->offset += length;
@@ -76,31 +75,31 @@ int encode_object(encode_t *b, PyObject *item)
 
         #if (PY_VERSION_HEX >= 0x030D0000)
 
-            const size_t length = PyLong_AsNativeBytes(item, BUF_GET_OFFSET + 1, 9, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
+            const size_t nbytes = PyLong_AsNativeBytes(item, BUF_GET_OFFSET + 1, 9, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
 
-            if (length == 9)
+            if (nbytes == 9)
             {
                 PyErr_SetString(EncodingError, "Only integers of up to 8 bytes are supported");
                 return 1;
             }
-            
-            *(b->offset) = DT_INTGR | (length << 3);
-            b->offset += length + 1;
+
+            METADATA_INTEGER_WR();
+            b->offset += nbytes;
 
         #else
 
-            const size_t length = (_PyLong_NumBits(item) + 8) >> 3;
+            const size_t nbytes = (_PyLong_NumBits(item) + 8) >> 3;
 
-            if (length > 8)
+            if (nbytes > 8)
             {
                 PyErr_SetString(EncodingError, "Only integers of up to 8 bytes are supported");
                 return 1;
             }
-            
-            *BUF_POST_INC = DT_INTGR | (length << 3);
 
-            _PyLong_AsByteArray((PyLongObject *)item, (unsigned char *)(b->offset), length, 1, 1);
-            b->offset += length;
+            METADATA_INTEGER_WR(nbytes);
+
+            _PyLong_AsByteArray((PyLongObject *)item, (unsigned char *)(b->offset), nbytes, 1, 1);
+            b->offset += nbytes;
 
         #endif
 
@@ -136,12 +135,12 @@ int encode_object(encode_t *b, PyObject *item)
     {
         DT_CHECK(PyList_Type);
 
-        const size_t num_items = (size_t)PyList_GET_SIZE(item);
+        const size_t nitems = (size_t)PyList_GET_SIZE(item);
 
         OFFSET_CHECK(MAX_METADATA_SIZE);
-        WR_METADATA(b->offset, DT_ARRAY, num_items);
+        METADATA_VARLEN_WR(DT_ARRAY, nitems);
 
-        for (size_t i = 0; i < num_items; ++i)
+        for (size_t i = 0; i < nitems; ++i)
             if (encode_object(b, PyList_GET_ITEM(item, i)) == 1) return 1;
         
         return 0;
@@ -150,10 +149,10 @@ int encode_object(encode_t *b, PyObject *item)
     {
         DT_CHECK(PyDict_Type);
 
-        const size_t num_items = PyDict_GET_SIZE(item);
+        const size_t nitems = PyDict_GET_SIZE(item);
 
         OFFSET_CHECK(MAX_METADATA_SIZE);
-        WR_METADATA(b->offset, DT_DICTN, num_items);
+        METADATA_VARLEN_WR(DT_DICTN, nitems);
 
         Py_ssize_t pos = 0;
         PyObject *key, *val;
@@ -228,15 +227,15 @@ int encode_object(encode_t *b, PyObject *item)
 }
 
 #define TYPE_ARRAY(RD_LNx) { \
-    size_t num_items; \
-    RD_LNx(num_items); \
-    OVERREAD_CHECK(num_items); \
-    PyObject *list = PyList_New(num_items); \
+    size_t nitems; \
+    RD_LNx(nitems); \
+    OVERREAD_CHECK(nitems); \
+    PyObject *list = PyList_New(nitems); \
     \
     if (list == NULL) \
         return PyErr_NoMemory(); \
     \
-    for (size_t i = 0; i < num_items; ++i) \
+    for (size_t i = 0; i < nitems; ++i) \
     { \
         PyObject *item = decode_bytes(b); \
         if (item == NULL) \
@@ -250,14 +249,14 @@ int encode_object(encode_t *b, PyObject *item)
 }
 
 #define TYPE_DICTN(RD_LNx) { \
-    size_t num_items; \
-    RD_LNx(num_items); \
+    size_t nitems; \
+    RD_LNx(nitems); \
     PyObject *dict = PyDict_New(); \
     \
     if (dict == NULL) \
         return PyErr_NoMemory(); \
     \
-    for (size_t i = 0; i < num_items; ++i) \
+    for (size_t i = 0; i < nitems; ++i) \
     { \
         PyObject *key = decode_bytes(b); \
         if (key == NULL) \
@@ -321,43 +320,149 @@ PyObject *decode_bytes(decode_t *b)
         Py_RETURN_NONE;
     }
 
-    // Integers use their own metadata mechanic
-    case DT_INTGR | 0b00000:
-    case DT_INTGR | 0b01000:
-    case DT_INTGR | 0b10000:
-    case DT_INTGR | 0b11000: // Data is stacked on top of the first 3 bits so accept all top 2 bit variations
+    CASES_AS_5BIT(DT_INTGR)
     {
-        const size_t num_bytes = (*BUF_POST_INC & 0xFF) >> 3;
+        size_t nbytes;
+        METADATA_INTEGER_RD(nbytes);
+        OVERREAD_CHECK(nbytes);
 
-        OVERREAD_CHECK(num_bytes);
+        /* Use the efficient memcpy to get the integer value */
+        //int64_t num;
+        //__MEMCPY_READ(num, nbytes);
+
+        //num = LITTLE_64(num);
 
         #if (PY_VERSION_HEX >= 0x030D0000)
 
-            PyObject *value = PyLong_FromNativeBytes(b->offset, num_bytes, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
+            PyObject *value = PyLong_FromNativeBytes(b->offset, nbytes, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
 
         #else
 
-            PyObject *value = _PyLong_FromByteArray((const unsigned char *)(b->offset), num_bytes, 1, 1);
+            PyObject *value = _PyLong_FromByteArray((const unsigned char *)(b->offset), nbytes, 1, 1);
 
         #endif
 
-        OVERREAD_CHECK(num_bytes);
-
-        b->offset += num_bytes;
+        b->offset += nbytes;
 
         return value;
     }
 
-    // Dynamic length types, with length metadata
-    ANYMODE(DT_BYTES, TYPE_BYTES)
-    ANYMODE(DT_STRNG, TYPE_STRNG)
-    ANYMODE(DT_ARRAY, TYPE_ARRAY)
-    ANYMODE(DT_DICTN, TYPE_DICTN)
+    VARLEN_READ_CASES(DT_BYTES,
+    {
+        OVERREAD_CHECK(length);
+        
+        PyObject *value;
+        if (b->bufd != NULL)
+            value = cbytes_create(b->bufd, b->offset, length);
+        else
+            value = PyBytes_FromStringAndSize(b->offset, (Py_ssize_t)(length));
+        
+        b->offset += length;
+        return value;
+    })
+
+    VARLEN_READ_CASES(DT_STRNG,
+    {
+        OVERREAD_CHECK(length);
+
+        PyObject *value;
+        if (b->bufd != NULL)
+            value = cstr_create(b->bufd, b->offset, length);
+        else
+            value = PyUnicode_DecodeUTF8(b->offset, length, "strict");
+        
+        b->offset += length;
+        return value;
+    })
+
+    VARLEN_READ_CASES(DT_ARRAY,
+    {
+        OVERREAD_CHECK(0);
+        
+        PyObject *list = PyList_New(length);
+    
+        if (list == NULL)
+            return PyErr_NoMemory();
+    
+        for (size_t i = 0; i < length; ++i)
+        {
+            PyObject *item = decode_bytes(b);
+            if (item == NULL)
+            {
+                Py_DECREF(list);
+                return NULL;
+            }
+            PyList_SET_ITEM(list, i, item);
+        }
+        return list;
+    })
+
+    VARLEN_READ_CASES(DT_DICTN, {
+        OVERREAD_CHECK(0);
+
+        PyObject *dict = PyDict_New();
+    
+        if (dict == NULL)
+            return PyErr_NoMemory();
+    
+        for (size_t i = 0; i < length; ++i)
+        {
+            PyObject *key = decode_bytes(b);
+            if (key == NULL)
+            {
+                Py_DECREF(dict);
+                return NULL;
+            }
+
+            PyObject *val = decode_bytes(b);
+            if (val == NULL)
+            {
+                Py_DECREF(dict);
+                Py_DECREF(key);
+                return NULL;
+            }
+
+            PyDict_SetItem(dict, key, val);
+
+            Py_DECREF(key);
+            Py_DECREF(val);
+        }
+        
+        return dict;
+    })
     }
 
     // Try as a custom type
-    PyObject *custom_result = decode_custom(b);
+    return decode_custom(b);
+}
 
-    return custom_result;
+#define TYPE_DICTN(RD_LNx) { \
+    size_t nitems; \
+    RD_LNx(nitems); \
+    PyObject *dict = PyDict_New(); \
+    \
+    if (dict == NULL) \
+        return PyErr_NoMemory(); \
+    \
+    for (size_t i = 0; i < nitems; ++i) \
+    { \
+        PyObject *key = decode_bytes(b); \
+        if (key == NULL) \
+        { \
+            Py_DECREF(dict); \
+            return NULL; \
+        } \
+        PyObject *val = decode_bytes(b); \
+        if (val == NULL) \
+        { \
+            Py_DECREF(dict); \
+            Py_DECREF(key); \
+            return NULL; \
+        } \
+        PyDict_SetItem(dict, key, val); \
+        Py_DECREF(key); \
+        Py_DECREF(val); \
+    } \
+    return dict; \
 }
 

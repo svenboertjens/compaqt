@@ -7,7 +7,6 @@
 #include "globals/exceptions.h"
 #include "globals/buftricks.h"
 #include "globals/typemasks.h"
-#include "globals/metadata.h"
 #include "globals/typedefs.h"
 
 #include "settings/allocations.h"
@@ -42,12 +41,12 @@ int offset_check(reg_encode_t *b, const size_t length)
 
 static inline int encode_container(reg_encode_t *b, PyObject *cont, PyTypeObject *type, const int stream_compatible)
 {
-    size_t num_items = Py_SIZE(cont);
+    size_t nitems = Py_SIZE(cont);
     size_t initial_alloc;
 
     if (type == &PyList_Type)
     {
-        initial_alloc = (num_items * avg_item_size) + avg_realloc_size;
+        initial_alloc = (nitems * avg_item_size) + avg_realloc_size;
         b->base = b->offset = (char *)malloc(initial_alloc);
         b->max_offset = b->base + initial_alloc;
 
@@ -59,22 +58,23 @@ static inline int encode_container(reg_encode_t *b, PyObject *cont, PyTypeObject
 
         if (stream_compatible == 0)
         {
-            WR_METADATA(b->offset, DT_ARRAY, num_items);
+            METADATA_VARLEN_WR(DT_ARRAY, nitems);
         }
         else
         {
-            // Write LM2 metadata if it needs to be streaming compatible
-            WR_METADATA_LM2_MASK(b->offset, DT_ARRAY, 8);
-            WR_METADATA_LM2(b->offset, num_items, 8);
+            __SETBYTE(DT_ARRAY | 0b111);
+            memcpy(b->offset, &nitems, 8);
+
+            b->offset += 8;
         }
 
-        for (size_t i = 0; i < num_items; ++i)
+        for (size_t i = 0; i < nitems; ++i)
             if (encode_object((encode_t *)b, PyList_GET_ITEM(cont, i)) == 1) return 1;
     }
     else
     {
         // Allocate for twice as many items as we have pairs of keys and values
-        initial_alloc = (num_items * 2 * avg_item_size) + avg_realloc_size;
+        initial_alloc = (nitems * 2 * avg_item_size) + avg_realloc_size;
         b->base = b->offset = (char *)malloc(initial_alloc);
         b->max_offset = b->base + initial_alloc;
 
@@ -86,16 +86,17 @@ static inline int encode_container(reg_encode_t *b, PyObject *cont, PyTypeObject
 
         if (stream_compatible == 0)
         {
-            WR_METADATA(b->offset, DT_DICTN, num_items);
+            METADATA_VARLEN_WR(DT_DICTN, nitems);
         }
         else
         {
-            // Write LM2 metadata if it needs to be streaming compatible
-            WR_METADATA_LM2_MASK(b->offset, DT_DICTN, 8);
-            WR_METADATA_LM2(b->offset, num_items, 8);
+            __SETBYTE(DT_DICTN | 0b111);
+            memcpy(b->offset, &nitems, 8);
+
+            b->offset += 8;
         }
 
-        num_items <<= 1;
+        nitems <<= 1;
 
         PyObject *key;
         PyObject *val;
@@ -108,7 +109,7 @@ static inline int encode_container(reg_encode_t *b, PyObject *cont, PyTypeObject
         }
     }
 
-    update_allocation_settings(b->reallocs, BUF_GET_OFFSET, initial_alloc, num_items);
+    update_allocation_settings(b->reallocs, BUF_GET_OFFSET, initial_alloc, nitems);
     return 0;
 }
 
@@ -287,6 +288,8 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
         }
     }
 
+    decode_t b;
+
     if (kwargs != NULL)
     {
         size_t remaining = PyDict_GET_SIZE(kwargs);
@@ -345,8 +348,6 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
     kwargs_parse_end:
 
     /* END OF CUSTOM PARSING */
-    
-    decode_t b;
 
     // Read from the value if one is given
     if (value != NULL)
@@ -365,8 +366,6 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
     }
     else
     {
-        if (filename == NULL)
-            printf("is null 2\n");
         // Otherwise read from the file if given
         FILE *file = fopen(filename, "rb");
 
@@ -444,6 +443,7 @@ PyObject *decode(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     b.bufcheck = (bufcheck_t)overread_check;
+    b.utypes = utypes;
 
     PyObject *result = decode_bytes(&b);
 

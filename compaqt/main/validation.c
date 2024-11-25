@@ -2,7 +2,6 @@
 
 #include <Python.h>
 
-#include "globals/metadata.h"
 #include "globals/exceptions.h"
 #include "globals/typemasks.h"
 #include "globals/buftricks.h"
@@ -33,67 +32,60 @@ static inline int _validate(decode_t *b, FILE *file)
 {
     CHECK(0);
     
-    const char dt_mask = b->offset[0];
-    switch (dt_mask)
+    const char tpmask = b->offset[0] & 0b11111;
+    switch (tpmask)
     {
-    case DT_GROUP: // Group datatypes
-    {
-        switch (BUF_POST_INC[0])
-        {
-        // Static lengths, no metadata to read, already incremented by `RD_DTMASK_GROUP`
-        case DT_FLOAT: CHECK(8);  b->offset += 8; return 0;
-        case DT_BOOLF: // Boolean and NoneType values don't have more bytes, nothing to increment
-        case DT_BOOLT:
-        case DT_NONTP: return 0;
-        default: return 1;
-        }
-    }
-    case DT_ARRAY: // Combine the two container types as they're processed the same
-    case DT_DICTN:
-    {
-        size_t num_items = 0;
-        RD_METADATA(b->offset, num_items);
-
-        // Multiply dict number of items by 2 as it has pairs
-        if (dt_mask == DT_DICTN)
-            num_items *= 2;
-        
-        for (size_t i = 0; i < num_items; ++i)
-            if (_validate(b, file) != 0) return 1;
-        
-        return 0;
-    }
-    case DT_EXTND:
+    case DT_FLOAT: CHECK(9); b->offset += 9; return 0;
+    case DT_BOOLF:
+    case DT_BOOLT:
+    case DT_NONTP: ++(b->offset); return 0;
+    
+    CASES_AS_5BIT(DT_UTYPE)
     {
         ++(b->offset);
 
-        const size_t num_bytes = *BUF_POST_INC & 0xFF;
-        CHECK(num_bytes);
-
+        int idx; // Unused
         size_t length;
-        RD_METADATA_LM2(b->offset, length, num_bytes);
+
+        METADATA_UTYPE_RD(idx, length);
+        CHECK(length);
 
         b->offset += length;
 
         return 0;
     }
-    case DT_INTGR:
+    CASES_AS_5BIT(DT_INTGR)
     {
-        const size_t total_len = ((b->offset[0] & 0xFF) >> 3) + 1;
+        const size_t total_len = ((b->offset[0] & 0xFF) >> 5) + 1;
         CHECK(total_len);
 
         b->offset += total_len;
 
         return 0;
     }
-    case DT_NOUSE: return 1; // Not in use, so this would mean invalid
-    default:
+    CASES_AS_5BIT(DT_BYTES)
+    CASES_AS_5BIT(DT_STRNG)
     {
-        // All other cases use regular metadata, so read length and increment offset using it
         size_t length;
-        RD_METADATA(b->offset, length);
+        METADATA_VARLEN_RD(length);
+        CHECK(length);
 
         b->offset += length;
+        return 0;
+    }
+    CASES_AS_5BIT(DT_ARRAY)
+    CASES_AS_5BIT(DT_DICTN)
+    {
+        size_t nitems;
+        METADATA_VARLEN_RD(nitems);
+
+        // Twice as much items if it's a dict, as dicts work with pairs
+        if ((tpmask & 0b111) == DT_DICTN)
+            nitems *= 2;
+
+        for (size_t i = 0; i < nitems; ++i)
+            if (_validate(b, file) == 1) return 1;
+        
         return 0;
     }
     }

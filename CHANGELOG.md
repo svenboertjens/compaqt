@@ -3,6 +3,12 @@
 All changes to the `compaqt` module are documented here.
 
 
+## [1.1.0] - 2024-11-25
+
+### Updates:
+- Modified structure for custom types;
+
+
 ## [1.0.2] - 2024-11-09
 
 ### Fixes:

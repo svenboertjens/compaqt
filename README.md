@@ -61,10 +61,8 @@ For further details on how to use this library, please consult the [USAGE](https
 
 ## Installation
 
-To install this module for Python, simply run this:
+To install this module in Python, run:
 `pip install compaqt`
-
-For cases where the C implementation cannot be used, a Pure Python fallback is implemented and automatically used when the C implementation fails.
 
 
 ## License

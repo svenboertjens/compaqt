@@ -9,14 +9,14 @@
 
 #define HASH(x) (((uintptr_t)(x) >> 8) & 31)
 
-static inline hash_table_t *get_hash_table(PyTypeObject **keys, PyObject **vals, uint8_t *idxs, int amt)
+static inline hash_table_t *get_hash_table(PyTypeObject **keys, PyObject **vals, uint8_t *idxs, const int amt)
 {
     hash_table_t *buf = (hash_table_t *)malloc(sizeof(hash_table_t) + (sizeof(keyval_t) * amt));
 
     if (buf == NULL)
         return NULL;
 
-    uint8_t lengths[32] = {0};
+    uint8_t lengths[HASH_TABLE_SLOTS] = {0};
 
     for (int i = 0; i < amt; ++i)
     {
@@ -28,7 +28,7 @@ static inline hash_table_t *get_hash_table(PyTypeObject **keys, PyObject **vals,
 
     buf->offsets[0] = 0;
 
-    for (int i = 1; i < 32; ++i)
+    for (int i = 1; i < HASH_TABLE_SLOTS; ++i)
         buf->offsets[i] = buf->offsets[i - 1] + buf->lengths[i - 1];
     
     memset(buf->idxs, 0, sizeof(buf->idxs));
@@ -70,10 +70,6 @@ static inline PyObject *pull_from_table(hash_table_t *table, PyTypeObject *key, 
 
 /* USER TYPES */
 
-// Max types is 1 byte: 8 bits - 3 datatype mask bits = 5 bits: 2^5 - 1 = 32
-#define MAX_CUSTOM_TYPES 32
-#define MAX_TYPE_IDX (MAX_CUSTOM_TYPES - 1)
-
 void utypes_encode_dealloc(utypes_encode_ob *self)
 {
     hash_table_t *table = self->table;
@@ -82,7 +78,7 @@ void utypes_encode_dealloc(utypes_encode_ob *self)
     {
         // Calculate the total length
         size_t num_chains = 0;
-        for (int i = 0; i < 32; ++i)
+        for (int i = 0; i < HASH_TABLE_SLOTS; ++i)
             num_chains += table->lengths[i];
 
         // Decref all types and functions stored 
@@ -103,7 +99,7 @@ void utypes_encode_dealloc(utypes_encode_ob *self)
 
 void utypes_decode_dealloc(utypes_decode_ob *self)
 {
-    for (size_t i = 0; i < MAX_TYPE_IDX; ++i)
+    for (size_t i = 0; i < HASH_TABLE_SLOTS - 1; ++i)
         Py_XDECREF(self->reads[i]);
 
     free(self->reads);
@@ -140,7 +136,7 @@ PyObject *get_utypes_encode_ob(PyObject *self, PyObject *args)
     // Number of custom types
     const size_t amt = PyDict_GET_SIZE(data);
 
-    if (amt > MAX_CUSTOM_TYPES)
+    if (amt > HASH_TABLE_SLOTS)
     {
         PyErr_Format(PyExc_ValueError, "Only up to 32 custom types are allowed, got a dict with %zu pairs", amt);
         return NULL;
@@ -152,10 +148,10 @@ PyObject *get_utypes_encode_ob(PyObject *self, PyObject *args)
         return PyErr_NoMemory();
     
     ob->table = NULL;
-    
-    PyTypeObject *keys[32];
-    PyObject *vals[32];
-    uint8_t idxs[32];
+
+    PyTypeObject **keys = (PyTypeObject **)malloc(amt * sizeof(PyTypeObject *));
+    PyObject **vals = (PyObject **)malloc(amt * sizeof(PyObject *));
+    uint8_t *idxs = (uint8_t *)malloc(amt * sizeof(uint8_t));
     
     PyObject *idx;
     PyObject *tuple;
@@ -206,9 +202,9 @@ PyObject *get_utypes_encode_ob(PyObject *self, PyObject *args)
             return NULL;
         }
 
-        if (ptr_idx > MAX_TYPE_IDX)
+        if (ptr_idx > HASH_TABLE_SLOTS - 1)
         {
-            PyErr_Format(PyExc_IndexError, "Custom type index out of range: got %lu, max is %i", ptr_idx, MAX_TYPE_IDX);
+            PyErr_Format(PyExc_IndexError, "Custom type index out of range: got %lu, max is %i", ptr_idx, HASH_TABLE_SLOTS - 1);
             Py_DECREF(ob);
             return NULL;
         }
@@ -223,6 +219,10 @@ PyObject *get_utypes_encode_ob(PyObject *self, PyObject *args)
     }
 
     ob->table = get_hash_table(keys, vals, idxs, amt);
+
+    free(keys);
+    free(vals);
+    free(idxs);
 
     if (ob->table == NULL)
         return PyErr_NoMemory();
@@ -243,7 +243,7 @@ PyObject *get_utypes_decode_ob(PyObject *self, PyObject *args)
         return PyErr_NoMemory();
 
     // Allocate with calloc to set unused values to NULL
-    ob->reads = (PyObject **)calloc(MAX_CUSTOM_TYPES, sizeof(PyObject *));
+    ob->reads = (PyObject **)calloc(HASH_TABLE_SLOTS, sizeof(PyObject *));
 
     if (ob->reads == NULL)
     {
@@ -283,7 +283,7 @@ PyObject *get_utypes_decode_ob(PyObject *self, PyObject *args)
 
 /* SERIALIZATION */
 
-extern inline int encode_custom(encode_t *b, PyObject *value)
+int encode_custom(encode_t *b, PyObject *value)
 {
     // Check if we actually got a custom types object as it's optional
     if (b->utypes == NULL)
@@ -322,39 +322,19 @@ extern inline int encode_custom(encode_t *b, PyObject *value)
     size_t length;
     PyBytes_AsStringAndSize(result, &ptr, (Py_ssize_t *)(&length));
 
-    b->bufcheck(b, length + 9);
+    if (b->bufcheck(b, length + MAX_METADATA_SIZE) == 1)
+        return 1;
 
-    // Write the extension mask along with the index above it
-    *(b->offset++) = DT_EXTND | idx;
+    METADATA_UTYPE_WR(idx, length);
 
-    // Separate case if length is zero
-    if (length == 0)
-    {
-        *(b->offset++) = (char)0;
-    }
-    else
-    {
-        // Count how many bytes the length takes up
-        const size_t num_bytes = USED_BYTES_64(length);
-
-        // Write the number of bytes
-        *(b->offset++) = (char)num_bytes;
-
-        // Write the length as little-endian
-        const size_t length_little = LITTLE_64(length);
-        memcpy(b->offset, &length_little, num_bytes);
-        b->offset += num_bytes;
-
-        // Write the actual bytes
-        memcpy(b->offset, ptr, length);
-        b->offset += length;
-    }
+    memcpy(b->offset, ptr, length);
+    b->offset += length;
 
     Py_DECREF(result);
     return 0;
 }
 
-extern inline PyObject *decode_custom(decode_t *b)
+PyObject *decode_custom(decode_t *b)
 {
     // Custom types object is NULL if we didn't get one, in that case the bytes are invalid
     if (b->utypes == NULL)
@@ -362,30 +342,23 @@ extern inline PyObject *decode_custom(decode_t *b)
         PyErr_SetString(DecodingError, "Likely received an invalid or corrupted bytes object");
         return NULL;
     }
-    
-    // Custom types take at least 2 bytes
-    b->bufcheck(b, 2);
+
+    int idx;
+    size_t length;
+    METADATA_UTYPE_RD(idx, length);
+
+    if (b->bufcheck(b, length) == 1)
+        return NULL;
     
     // Get the pointer index we stored earlier to find the function to call
-    const size_t ptr_idx = (*(b->offset++) & 0xFF) >> 3;
-    PyObject *func = ((utypes_decode_ob *)b->utypes)->reads[ptr_idx];
+    PyObject *func = ((utypes_decode_ob *)b->utypes)->reads[idx];
 
     // No function was provided for this pointer index
     if (func == NULL)
     {
-        PyErr_Format(DecodingError, "Could not find a valid function on ID %zu. Did you use the same custom type ID as when encoding?", ptr_idx);
+        PyErr_Format(DecodingError, "Could not find a valid function on ID %i. Did you use the same custom type ID as when encoding?", idx);
         return NULL;
     }
-    
-    // Read how many bytes the length was
-    const size_t num_bytes = *(b->offset++) & 0xFF;
-
-    // Retrieve the value length
-    size_t length = 0;
-    memcpy(&length, b->offset, num_bytes);
-    b->offset += num_bytes;
-
-    b->bufcheck(b, length);
 
     // Create a bytes buffer to pass to the function for decoding
     PyObject *buffer = PyBytes_FromStringAndSize(b->offset, length);

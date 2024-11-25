@@ -56,7 +56,7 @@ PyObject *dynamic_allocations(PyObject *self, PyObject *args, PyObject *kwargs)
     Py_RETURN_NONE;
 }
 
-extern inline void update_allocation_settings(const int reallocs, const size_t offset, const size_t initial_allocated, const size_t nitems)
+void update_allocation_settings(const int reallocs, const size_t offset, const size_t initial_allocated, const size_t nitems)
 {
     if (dynamic_allocation_tweaks == 1)
     {

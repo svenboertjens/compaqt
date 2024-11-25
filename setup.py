@@ -37,7 +37,7 @@ ext_modules = [
 
 setup(
     name="compaqt",
-    version="1.1.0-4",
+    version="1.1.0",
     
     author="Sven Boertjens",
     author_email="boertjens.sven@gmail.com",

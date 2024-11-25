@@ -10,8 +10,6 @@
 #include "globals/buftricks.h"
 #include "globals/typedefs.h"
 
-#define MAX_METADATA_SIZE 9
-
 /* ENCODING */
 
 // Check datatype for a container item
@@ -75,7 +73,7 @@ int encode_object(encode_t *b, PyObject *item)
 
         #if (PY_VERSION_HEX >= 0x030D0000)
 
-            const size_t nbytes = PyLong_AsNativeBytes(item, BUF_GET_OFFSET + 1, 9, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
+            const size_t nbytes = PyLong_AsNativeBytes(item, b->offset + 1, 9, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
 
             if (nbytes == 9)
             {
@@ -83,7 +81,7 @@ int encode_object(encode_t *b, PyObject *item)
                 return 1;
             }
 
-            METADATA_INTEGER_WR();
+            METADATA_INTEGER_WR(nbytes);
             b->offset += nbytes;
 
         #else

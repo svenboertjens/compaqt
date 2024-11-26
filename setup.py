@@ -14,6 +14,7 @@ ext_modules = [
             'compaqt/globals/exceptions.c',
             
             'compaqt/main/serialization.c',
+            'compaqt/main/serialization2.c',
             'compaqt/main/regular.c',
             'compaqt/main/stream.c',
             'compaqt/main/validation.c',

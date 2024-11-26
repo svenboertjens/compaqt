@@ -14,12 +14,16 @@
 
 #include "globals/exceptions.h"
 
+#include "main/serialization2.h"
+
 /* MODULE DEFINITIONS */
 
 // Main module methods
 static PyMethodDef CompaqtMethods[] = {
     {"encode", (PyCFunction)encode, METH_VARARGS | METH_KEYWORDS, NULL},
     {"decode", (PyCFunction)decode, METH_VARARGS | METH_KEYWORDS, NULL},
+
+    {"encode_test", (PyCFunction)encode_test, METH_VARARGS, NULL},
 
     {"validate", (PyCFunction)validate, METH_VARARGS | METH_KEYWORDS, NULL},
 

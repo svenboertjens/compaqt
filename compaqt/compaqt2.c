@@ -333,14 +333,55 @@ static void fetch_float(PyObject *obj, double *num)
 #include <stddef.h>
 #define PyBytesObject_SIZE (offsetof(PyBytesObject, ob_sval) + 1)
 
+
+// Initial size to allocate for a buffer
 #define INITIAL_ALLOC_SIZE 512
 
+// Size to allocate up front for a buffer
+static size_t alloc_size = 128;
+// Size to allocate per item in containers
+static size_t item_size = 12;
+
+// Minimum values for the dynamic allocation values to prevent severe underallocation or underflow
+#define ALLOC_SIZE_MIN 64
+#define ITEM_SIZE_MIN 4
+
+static void update_allocation_settings(const size_t reallocs, const size_t offset, const size_t initial_allocated, const size_t nitems)
+{
+    if (reallocs != 0)
+    {
+        const size_t biased_diff = offset - (initial_allocated / 1.25);
+        const size_t med_diff = biased_diff / (nitems);
+
+        alloc_size += biased_diff >> 1;
+        item_size += med_diff >> 1;
+    }
+    else
+    {
+        const size_t difference = initial_allocated - offset;
+        const size_t med_diff = difference / (nitems + 1);
+        const size_t diff_small = difference >> 4;
+        const size_t med_small = med_diff >> 5;
+
+        if (diff_small + ALLOC_SIZE_MIN < alloc_size)
+            alloc_size -= diff_small;
+        else
+            alloc_size = ALLOC_SIZE_MIN;
+
+        if (med_small + ITEM_SIZE_MIN < item_size)
+            item_size -= med_small;
+        else
+            item_size = ITEM_SIZE_MIN;
+    }
+}
+
 // Ensure that there's ENSURE_SIZE space available in a buffer
-static inline bool buffer_ensure_space(buffer_t *b, size_t ensure_size)
+static inline bool buffer_ensure_space(buffer_t *b, size_t ensure_size, size_t *reallocs)
 {
     const size_t required_size = b->offset + ensure_size;
     if (_UNLIKELY(required_size >= b->allocated))
     {
+        // Scale the buffer by 1.5 times the required size
         b->allocated = required_size * 1.5;
 
         PyBytesObject *new_ob = (PyBytesObject *)PyObject_Realloc(b->ob_base, PyBytesObject_SIZE + b->allocated);
@@ -353,15 +394,17 @@ static inline bool buffer_ensure_space(buffer_t *b, size_t ensure_size)
 
         b->ob_base = new_ob;
         b->base = PyBytes_AS_STRING(new_ob);
+
+        *reallocs += 1;
     }
 
     return true;
 }
 
 
-/* ENCODING OF OBJECTS */
+/* ENCODING */
 
-static bool encode_object(PyObject *obj, buffer_t *b)
+static bool encode_object(PyObject *obj, buffer_t *b, size_t *reallocs)
 {
     PyTypeObject *tp = Py_TYPE(obj);
 
@@ -373,7 +416,7 @@ static bool encode_object(PyObject *obj, buffer_t *b)
         fetch_str(obj, &base, &size);
 
         // Ensure there's enough space for metadata plus the string size
-        if (_UNLIKELY(!buffer_ensure_space(b, 8 + size)))
+        if (_UNLIKELY(!buffer_ensure_space(b, 8 + size, reallocs)))
             return false;
         
         write_str_metadata(b, size);
@@ -390,7 +433,7 @@ static bool encode_object(PyObject *obj, buffer_t *b)
 
         fetch_bytes(obj, &base, &size);
 
-        if (_UNLIKELY(!buffer_ensure_space(b, 8 + size)))
+        if (_UNLIKELY(!buffer_ensure_space(b, 8 + size, reallocs)))
             return false;
         
         write_bytes_metadata(b, size);
@@ -402,7 +445,7 @@ static bool encode_object(PyObject *obj, buffer_t *b)
     }
 
     // Ensure 9 bytes are available. This is the max size that'll be stored by any of the following types (except for utypes)
-    if (_UNLIKELY(!buffer_ensure_space(b, 9)))
+    if (_UNLIKELY(!buffer_ensure_space(b, 9, reallocs)))
         return false;
 
     if (tp == &PyLong_Type)
@@ -448,7 +491,7 @@ static bool encode_object(PyObject *obj, buffer_t *b)
         // Iterate over all items in the array and encode them
         for (size_t i = 0; i < nitems; ++i)
         {
-            if (_UNLIKELY(!encode_object(PyList_GET_ITEM(obj, i), b)))
+            if (_UNLIKELY(!encode_object(PyList_GET_ITEM(obj, i), b, reallocs)))
                 return false;
         }
     }
@@ -469,8 +512,8 @@ static bool encode_object(PyObject *obj, buffer_t *b)
             PyDict_Next(obj, &pos, &key, &val);
 
             if (
-                _UNLIKELY(!encode_object(key, b)) ||
-                _UNLIKELY(!encode_object(val, b))
+                _UNLIKELY(!encode_object(key, b, reallocs)) ||
+                _UNLIKELY(!encode_object(val, b, reallocs))
             ) return false;
         }
     }
@@ -493,9 +536,22 @@ static PyObject *encode(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     }
 
     PyObject *obj = args[0];
+
+    size_t initial_alloc = alloc_size;
+    size_t nitems = 0;
+    if (Py_TYPE(obj) == &PyList_Type)
+    {
+        nitems = PyList_GET_SIZE(obj);
+        initial_alloc += item_size * nitems;
+    }
+    else if (Py_TYPE(obj) == &PyDict_Type)
+    {
+        nitems = PyDict_GET_SIZE(obj) * 2;
+        initial_alloc += item_size * nitems;
+    }
     
     // Create a manually allocated bytes object
-    PyObject *bytes_ob = (PyObject *)PyObject_Malloc(PyBytesObject_SIZE + INITIAL_ALLOC_SIZE);
+    PyObject *bytes_ob = (PyObject *)PyObject_Malloc(PyBytesObject_SIZE + initial_alloc);
 
     if (bytes_ob == NULL)
         return NULL;
@@ -508,15 +564,22 @@ static PyObject *encode(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     buffer_t b = {
         .ob_base = bobj,
         .base = PyBytes_AS_STRING(bobj),
-        .allocated = INITIAL_ALLOC_SIZE,
+        .allocated = initial_alloc,
         .offset = 0,
     };
+
+    size_t reallocs = 0;
     
-    if (_UNLIKELY(encode_object(obj, &b) == false))
+    if (_UNLIKELY(encode_object(obj, &b, &reallocs) == false))
     {
         // Error should be set already
         PyObject_Free(b.ob_base);
         return NULL;
+    }
+
+    if (nitems != 0)
+    {
+        update_allocation_settings(reallocs, b.offset, initial_alloc, nitems);
     }
 
     // Correct the size of the bytes object and null-terminate before returning

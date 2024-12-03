@@ -56,22 +56,22 @@ typedef struct {
 #define VARLEN_METADATA_WR(tpmask, pre) do { \
     if (pre->size < 16) \
     { \
+        *total += pre->size + 1; \
         pre->size |= (1ULL << 56); \
         pre->mdata = tpmask | (pre->size << 4); \
-        *total += pre->size + 1; \
     } \
     else if (pre->size < 2048) \
     { \
+        *total += pre->size + 2; \
         pre->size |= (2ULL << 56); \
         pre->mdata = tpmask | (0b01 << 3) | (pre->size << 5); \
-        *total += pre->size + 2; \
     } \
     else \
     { \
         const uint64_t nbytes = USED_BYTES_64(pre->size); \
+        *total += pre->size + nbytes + 1; \
         pre->size |= (nbytes << 56); \
         pre->mdata = tpmask | (0b11 << 3) | (pre->size << 5); \
-        *total += pre->size + nbytes + 1; \
     } \
 } while (0)
 
@@ -102,7 +102,7 @@ static inline int fill_preval(PyObject *value, preval_t *pre, size_t *total)
             pre->base = NULL;
             pre->mdata = value == Py_True ? DT_BOOLT : DT_BOOLF;
 
-            total += 1;
+            *total += 1;
 
             return 0;
         }
@@ -160,7 +160,7 @@ static inline int fill_preval(PyObject *value, preval_t *pre, size_t *total)
         pre->base = NULL;
         pre->mdata = DT_NONTP;
 
-        total += 1;
+        *total += 1;
 
         return 0;
     }
@@ -215,11 +215,11 @@ static inline preval_array_t *get_preval_array(PyObject *value, size_t *total)
     }
 
     if (nitems < 16)
-        total += 1;
+        *total += 1;
     else if (nitems < 2048)
-        total += 2;
+        *total += 2;
     else
-        total += 1 + USED_BYTES_64(nitems);
+        *total += 1 + USED_BYTES_64(nitems);
 
     array->nitems = nitems;
 
@@ -294,12 +294,14 @@ static inline void encode_preval(char **offset, preval_t pre)
         return;
     }
 
-    printf("size: %zu\n", size);
-
     memcpy(*offset, &pre.mdata, 8);
     *offset += pre.size >> 56;
 
-    memcpy(*offset, pre.base, size);
+    for (size_t i = 0; i < (size + 15) & ~15; i += 16)
+    {
+        memcpy(*offset + i, pre.base + i, 16);
+    }
+
     *offset += size;
 
     return;
@@ -350,13 +352,16 @@ static inline PyObject *encode_object(PyObject *value)
 
         if (base == NULL)
         {
-            free(array);
+            free(array); // Replace with also freeing nested containers later
             return PyErr_NoMemory();
         }
 
         encode_preval_array(&offset, array, tp == &PyList_Type ? DT_ARRAY : DT_DICTN);
 
-        return PyBytes_FromStringAndSize(base, total);
+        PyObject *result = PyBytes_FromStringAndSize(base, total);
+
+        free(base);
+        return result;
     }
 
     return NULL;

@@ -371,4 +371,3 @@ PyObject *decode_custom(decode_t *b)
     // Would just return NULL if we received NULL
     return result;
 }
-

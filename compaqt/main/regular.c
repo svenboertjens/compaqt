@@ -13,10 +13,9 @@
 
 #include "types/usertypes.h"
 
-
 /* ENCODING */
 
-int offset_check(reg_encode_t *b, const size_t length)
+static inline int offset_check(reg_encode_t *b, const size_t length)
 {
     if (b->offset + length >= b->max_offset)
     {
@@ -46,7 +45,10 @@ static inline int encode_container(reg_encode_t *b, PyObject *cont, PyTypeObject
 
     if (type == &PyList_Type)
     {
-        initial_alloc = (nitems * avg_item_size) + avg_realloc_size;
+        __builtin_prefetch(&PyList_GET_ITEM(cont, 0), 0, 3);
+
+        //initial_alloc = (nitems * avg_item_size) + avg_realloc_size;
+        initial_alloc = 300400;
         b->base = b->offset = (char *)malloc(initial_alloc);
         b->max_offset = b->base + initial_alloc;
 
@@ -69,7 +71,9 @@ static inline int encode_container(reg_encode_t *b, PyObject *cont, PyTypeObject
         }
 
         for (size_t i = 0; i < nitems; ++i)
+        {
             if (encode_object((encode_t *)b, PyList_GET_ITEM(cont, i)) == 1) return 1;
+        }
     }
     else
     {
@@ -109,7 +113,7 @@ static inline int encode_container(reg_encode_t *b, PyObject *cont, PyTypeObject
         }
     }
 
-    update_allocation_settings(b->reallocs, BUF_GET_OFFSET, initial_alloc, nitems);
+    //update_allocation_settings(b->reallocs, BUF_GET_OFFSET, initial_alloc, nitems);
     return 0;
 }
 

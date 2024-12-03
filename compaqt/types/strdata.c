@@ -56,23 +56,11 @@ Py_ssize_t utf8_codepoints(char *data, const Py_ssize_t len)
             {
             BYTE4_CASES
             {
-                uint32_t tmp;
-                memcpy(&tmp, data, 4);
-
-                if ((tmp & 0b110000001100000011000000) != 0b100000001000000010000000)
-                    return -1;
-
                 data += 3;
                 break;
             }
             BYTE3_CASES
             {
-                uint16_t tmp;
-                memcpy(&tmp, data, 2);
-
-                if ((tmp & 0b1100000011000000) != 0b1000000010000000)
-                    return -1;
-
                 data += 2;
                 break;
             }
@@ -91,33 +79,18 @@ Py_ssize_t utf8_codepoints(char *data, const Py_ssize_t len)
         }
         BYTE2_CASES
         {
-            if ((UCHAR_CAST(data + 1) & 0b11000000) != 0b10000000)
-                return -1;
-            
             ++codepoints;
             data += 2;
             break;
         }
         BYTE3_CASES
         {
-            uint32_t tmp;
-            memcpy(&tmp, data, 4);
-
-            if ((tmp & 0b110000001100000000000000) != 0b100000001000000000000000)
-                return -1;
-
             ++codepoints;
             data += 3;
             break;
         }
         BYTE4_CASES
         {
-            uint32_t tmp;
-            memcpy(&tmp, data, 4);
-
-            if ((tmp & 0b11000000110000001100000011111000) != 0b10000000100000001000000011110000)
-                return -1;
-
             ++codepoints;
             data += 4;
             break;

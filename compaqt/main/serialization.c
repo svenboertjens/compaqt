@@ -10,6 +10,9 @@
 #include "globals/buftricks.h"
 #include "globals/typedefs.h"
 
+#include "settings/allocations.h"
+
+
 /* ENCODING */
 
 // Check datatype for a container item
@@ -24,41 +27,12 @@
 int encode_object(encode_t *b, PyObject *item)
 {
     PyTypeObject *type = Py_TYPE(item);
-    const char *tp_name = type->tp_name;
 
-    switch (*tp_name)
+    if (type == &PyUnicode_Type)
     {
-    case 'b': // Bytes / Boolean
-    {
-        if (tp_name[1] == 'y') // Bytes
-        {
-            DT_CHECK(PyBytes_Type);
-
-            const size_t length = PyBytes_GET_SIZE(item);
-
-            OFFSET_CHECK(MAX_METADATA_SIZE + length);
-            METADATA_VARLEN_WR(DT_BYTES, length);
-
-            const char *ptr = PyBytes_AS_STRING(item);
-            memcpy(b->offset, ptr, length);
-            b->offset += length;
-        }
-        else // Boolean
-        {
-            OFFSET_CHECK(1);
-            BOOLEAN_WR(item);
-        }
-
-        return 0;
-    }
-    case 's': // String
-    {
-        DT_CHECK(PyUnicode_Type);
-
         size_t length;
         const char *bytes = PyUnicode_AsUTF8AndSize(item, (Py_ssize_t *)&length);
 
-        OFFSET_CHECK(MAX_METADATA_SIZE + length);
         METADATA_VARLEN_WR(DT_STRNG, length);
 
         memcpy(b->offset, bytes, length);
@@ -66,48 +40,30 @@ int encode_object(encode_t *b, PyObject *item)
 
         return 0;
     }
-    case 'i': // Integer
+    else if (type == &PyLong_Type)
     {
-        DT_CHECK(PyLong_Type);
-        OFFSET_CHECK(9);
+        int overflow;
+        long long num = PyLong_AsLongLongAndOverflow(item, &overflow);
 
-        #if (PY_VERSION_HEX >= 0x030D0000)
+        if (overflow != 0)
+        {
+            PyErr_SetString(EncodingError, "Only integers of up to 8 bytes are supported");
+            return 1;
+        }
+        
+        const unsigned int nbytes = USED_BYTES_64(num);
 
-            const size_t nbytes = PyLong_AsNativeBytes(item, b->offset + 1, 9, Py_ASNATIVEBYTES_LITTLE_ENDIAN);
+        METADATA_INTEGER_WR(nbytes);
 
-            if (nbytes == 9)
-            {
-                PyErr_SetString(EncodingError, "Only integers of up to 8 bytes are supported");
-                return 1;
-            }
+        num = LITTLE_64(num);
 
-            METADATA_INTEGER_WR(nbytes);
-            b->offset += nbytes;
-
-        #else
-
-            const size_t nbytes = (_PyLong_NumBits(item) + 8) >> 3;
-
-            if (nbytes > 8)
-            {
-                PyErr_SetString(EncodingError, "Only integers of up to 8 bytes are supported");
-                return 1;
-            }
-
-            METADATA_INTEGER_WR(nbytes);
-
-            _PyLong_AsByteArray((PyLongObject *)item, (unsigned char *)(b->offset), nbytes, 1, 1);
-            b->offset += nbytes;
-
-        #endif
+        memcpy(b->offset, &num, 8);
+        b->offset += nbytes;
 
         return 0;
     }
-    case 'f': // Float
+    else if (type == &PyFloat_Type)
     {
-        DT_CHECK(PyFloat_Type);
-        OFFSET_CHECK(9);
-
         b->offset[0] = DT_FLOAT;
         BUF_PRE_INC;
 
@@ -119,23 +75,10 @@ int encode_object(encode_t *b, PyObject *item)
 
         return 0;
     }
-    case 'N': // NoneType
+    else if (type == &PyList_Type)
     {
-        if (item != Py_None)
-            break;
-        
-        OFFSET_CHECK(1);
-        
-        *BUF_POST_INC = DT_NONTP;
-        return 0;
-    }
-    case 'l': // List
-    {
-        DT_CHECK(PyList_Type);
-
         const size_t nitems = (size_t)PyList_GET_SIZE(item);
 
-        OFFSET_CHECK(MAX_METADATA_SIZE);
         METADATA_VARLEN_WR(DT_ARRAY, nitems);
 
         for (size_t i = 0; i < nitems; ++i)
@@ -143,13 +86,10 @@ int encode_object(encode_t *b, PyObject *item)
         
         return 0;
     }
-    case 'd': // Dict
+    else if (type == &PyDict_Type)
     {
-        DT_CHECK(PyDict_Type);
-
         const size_t nitems = PyDict_GET_SIZE(item);
 
-        OFFSET_CHECK(MAX_METADATA_SIZE);
         METADATA_VARLEN_WR(DT_DICTN, nitems);
 
         Py_ssize_t pos = 0;
@@ -160,10 +100,33 @@ int encode_object(encode_t *b, PyObject *item)
         
         return 0;
     }
+    else if (type == &PyBytes_Type)
+    {
+        const size_t length = PyBytes_GET_SIZE(item);
+
+        METADATA_VARLEN_WR(DT_BYTES, length);
+
+        const char *ptr = PyBytes_AS_STRING(item);
+        memcpy(b->offset, ptr, length);
+        b->offset += length;
+
+        return 0;
+    }
+    else if (type == &PyBool_Type)
+    {
+        BOOLEAN_WR(item);
+
+        return 0;
+    }
+    else if (item == Py_None)
+    {
+        *BUF_POST_INC = DT_NONTP;
+        return 0;
     }
 
     // Check for custom types
-    return encode_custom(b, item);
+    //return encode_custom(b, item);
+    return 1;
 }
 
 /* DECODING */

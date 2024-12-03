@@ -10,7 +10,7 @@
 
 // Buffer data holding the base, writing offset, and space allocated
 typedef struct {
-    PyObject *bytes_ob;
+    PyBytesObject *ob_base;
     char *base;
     size_t offset;
     size_t allocated;
@@ -145,12 +145,15 @@ static inline void write_container_metadata(buffer_t *b, const size_t size, cons
     if (size <= 15)
     {
         (b->base + b->offset++)[0] = tpmask | (size << 4);
-        return;
     }
     else if (size <= 2047)
     {
-        (b->base + b->offset++)[0] = tpmask | (0b01 << 3) | (size << 5);
+        (b->base + b->offset++)[0] = DT_STRNG | (0b01 << 2) | (size << 5);
         (b->base + b->offset++)[0] = size >> 3;
+
+        //const uint16_t metadata = tpmask | (0b01 << 3) | (size << 5);
+        //memcpy(b->base + b->offset, &metadata, 2);
+        //b->offset += 2;
     }
     else
     {
@@ -271,7 +274,7 @@ static bool fetch_long(PyObject *obj, uint64_t *num, size_t *size)
                ((uint64_t)lobj->long_value.ob_digit[2] << (PyLong_SHIFT * 2));
         
         const digit dig3 = lobj->long_value.ob_digit[2];
-        const digit dig3_overflow = (1ULL << (64 - (2 * PyLong_SHIFT)) - 1);
+        const digit dig3_overflow = ((1ULL << (64 - (2 * PyLong_SHIFT))) - 1);
 
         // Don't break if there's overflow
         if (_LIKELY(dig3 < dig3_overflow))
@@ -326,27 +329,35 @@ static void fetch_float(PyObject *obj, double *num)
 
 /* ALLOCATION METHODS */
 
+// Copied from cpython/Objects/bytesobject.c, as required for allocations
+#include <stddef.h>
+#define PyBytesObject_SIZE (offsetof(PyBytesObject, ob_sval) + 1)
+
 #define INITIAL_ALLOC_SIZE 512
 
 // Ensure that there's ENSURE_SIZE space available in a buffer
 static inline bool buffer_ensure_space(buffer_t *b, size_t ensure_size)
 {
-    if (_UNLIKELY(b->offset + ensure_size >= b->allocated))
+    const size_t required_size = b->offset + ensure_size;
+    if (_UNLIKELY(required_size >= b->allocated))
     {
-        b->allocated *= 2;
-        b->allocated += ensure_size;
+        b->allocated = required_size * 1.5;
 
-        if (_UNLIKELY(_PyBytes_Resize(&(b->bytes_ob), (Py_ssize_t)b->allocated) < 0))
+        PyBytesObject *new_ob = (PyBytesObject *)PyObject_Realloc(b->ob_base, PyBytesObject_SIZE + b->allocated);
+
+        if (_UNLIKELY(new_ob == NULL))
         {
             PyErr_NoMemory();
             return false;
         }
 
-        b->base = PyBytes_AS_STRING(b->bytes_ob);
+        b->ob_base = new_ob;
+        b->base = PyBytes_AS_STRING(new_ob);
     }
 
     return true;
 }
+
 
 /* ENCODING OF OBJECTS */
 
@@ -473,47 +484,52 @@ static bool encode_object(PyObject *obj, buffer_t *b)
     return true;
 }
 
-static PyObject *encode(PyObject *self, PyObject *args, PyObject *kwargs)
+static PyObject *encode(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
-    PyObject *obj = PyTuple_GET_ITEM(args, 0);
-
-    size_t nkwargs = PyDict_GET_SIZE(kwargs);
-    if (nkwargs != 0)
+    if (_UNLIKELY(nargs < 1))
     {
-        // Kwargs handling
+        PyErr_SetString(PyExc_ValueError, "Expected at least the 'obj' argument");
+        return NULL;
     }
+
+    PyObject *obj = args[0];
     
-    // Create a bytes object and write to its internal buffer
-    PyObject *bytes_ob = PyBytes_FromStringAndSize(NULL, INITIAL_ALLOC_SIZE);
+    // Create a manually allocated bytes object
+    PyObject *bytes_ob = (PyObject *)PyObject_Malloc(PyBytesObject_SIZE + INITIAL_ALLOC_SIZE);
 
     if (bytes_ob == NULL)
         return NULL;
+
+    // Set up the bytes object
+    PyBytesObject *bobj = (PyBytesObject *)bytes_ob;
+    Py_SET_REFCNT(bobj, 1);
+    Py_SET_TYPE(bobj, &PyBytes_Type);
     
     buffer_t b = {
-        .bytes_ob = bytes_ob,
-        .base = PyBytes_AS_STRING(bytes_ob), // Gets the base of the bytes object
+        .ob_base = bobj,
+        .base = PyBytes_AS_STRING(bobj),
         .allocated = INITIAL_ALLOC_SIZE,
         .offset = 0,
     };
     
     if (_UNLIKELY(encode_object(obj, &b) == false))
     {
-        // Cleanup. Error should be set already
-        Py_DECREF(bytes_ob);
+        // Error should be set already
+        PyObject_Free(b.ob_base);
         return NULL;
     }
 
     // Correct the size of the bytes object and null-terminate before returning
-    Py_SET_SIZE(bytes_ob, b.offset);
+    Py_SET_SIZE(b.ob_base, b.offset);
     b.base[b.offset] = 0;
 
-    return bytes_ob;
+    return (PyObject *)b.ob_base;
 }
 
 /* MODULE DEFS */
 
 static PyMethodDef CompaqtMethods[] = {
-    {"encode", (PyCFunction)encode, METH_VARARGS | METH_KEYWORDS, NULL},
+    {"encode", (PyCFunction)encode, METH_FASTCALL, NULL},
     //{"decode", (PyCFunction)decode, METH_VARARGS | METH_KEYWORDS, NULL},
 
     //{"validate", (PyCFunction)validate, METH_VARARGS | METH_KEYWORDS, NULL},

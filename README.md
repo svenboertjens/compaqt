@@ -2,6 +2,9 @@
 
 A compact serializer aiming for flexibility and performance.
 
+> **Note:**
+> This module has been replaced by [cmsgpack](https://pypi.org/project/cmsgpack/) on PyPI. Compaqt uses a custom serialization format, where cmsgpack uses MessagePack which is widely supported. Also, cmsgpack has largely improved performance over the latest version on Compaqt.
+
 
 ## What is this?
 
